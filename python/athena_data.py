@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import numpy as np
 import struct
 import h5py
@@ -7,6 +8,7 @@ from matplotlib import cm
 from matplotlib.colors import Normalize
 from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy.interpolate import interp1d
 
 # from bin_convert.py
 def read_binary(filename):
@@ -154,6 +156,7 @@ def read_binary(filename):
 
     return filedata
 
+
 def save_dict_to_hdf5(dic, filename):
     """
     Parameters
@@ -165,7 +168,6 @@ def save_dict_to_hdf5(dic, filename):
     """
     with h5py.File(filename, 'w') as h5file:
         _recursively_save_dict_contents_to_group(h5file, '/', dic)
-
 
 def _recursively_save_dict_contents_to_group(h5file, path, dic):
     """
@@ -179,15 +181,14 @@ def _recursively_save_dict_contents_to_group(h5file, path, dic):
         python dictionary to be converted to hdf5 format
     """
     for key, item in dic.items():
-        if isinstance(item, (np.ndarray, np.int64, np.float64, str, int, float,
+        if isinstance(item, (np.ndarray, np.int64, np.float64, np.bool_, str, int, float,
                              bytes, tuple, list)):
             h5file[path + str(key)] = item
         elif isinstance(item, dict):
             _recursively_save_dict_contents_to_group(h5file, path + key + '/', item)
         else:
-            print('Error: ', item)
+            print('Error: ', key, ":", item)
             raise ValueError('Cannot save %s type' % type(item))
-
 
 def load_hdf5_to_dict(h5file, path):
     """
@@ -235,17 +236,18 @@ class AthenaBinaries:
     def __init__(self,binarypath,path='',label='',name='Base',nlim=1001,update=True,**kwargs):
         self.nlim=nlim
         self.alist=[]
-        self.abins=[None,]*self.nlim
+        self.abins=[None]*self.nlim
         self.binarypath=binarypath
         self.path=path
         self.label=label
         self.name=name
+        self.evo={}
         self.update=update
         return
 
-    def read(self,ilist,info=False):
+    def read(self,ilist,info=False,redo=False):
         for i in ilist:
-            if(self.update or i not in self.alist):
+            if(redo or i not in self.alist):
                 if(info): print("read:",i)
                 self.abins[i]=AthenaBinary(path=self.path,label=self.label,num=i)
                 self.abins[i].load_binary(self.binarypath+f"{i:05d}.bin")
@@ -254,7 +256,7 @@ class AthenaBinaries:
 
     def save_hdf5(self,ilist=None,hdf5path=None,info=False):
         ilist=self.alist if not ilist else ilist
-        hdf5path="../simu/"+self.path+self.label+f"/data/hdf5/" if not hdf5path else hdf5path
+        hdf5path=self.path+self.label+f"/data/hdf5/" if not hdf5path else hdf5path
         if not os.path.isdir(hdf5path):
             os.mkdir(hdf5path)
         for i in ilist:
@@ -262,35 +264,58 @@ class AthenaBinaries:
             abin=self.abins[i]
             abin.save_hdf5(hdf5path+f"{self.name}.{i:05d}.hdf5")
     
-    def load_hdf5(self,ilist,hdf5path=None,info=False):
-        hdf5path="../simu/"+self.path+self.label+f"/data/hdf5/" if not hdf5path else hdf5path
+    def load_hdf5(self,ilist,hdf5path=None,info=False,redo=False):
+        hdf5path=self.path+self.label+f"/data/hdf5/" if not hdf5path else hdf5path
         for i in ilist:
-            if(self.update or i not in self.alist):
+            if(redo or i not in self.alist):
                 if(info): print("load hdf5:",i)
                 self.abins[i]=AthenaBinary(path=self.path,label=self.label,num=i)
                 self.abins[i].load_hdf5(hdf5path+f"{self.name}.{i:05d}.hdf5")
             self.alist=sorted(list(set(self.alist + list([i]))))
-        self.abin=self.abins[self.alist[0]]
         return
 
-    def config(self,**kwargs):
-        self.abin=self.abins[self.alist[0]]
-        if(self.update or not self.abin.config_flag):
+    @property
+    def abin(self):
+        return self.abins[self.alist[0]]
+
+    def config(self,redo=False,**kwargs):
+        if(redo or not self.abin.config_flag):
             self.abin.config(**kwargs)
         for i in self.alist[1:]:
             # only set coord once
             abin=self.abins[i]
-            if(self.update or not abin.coord):
+            if(redo or not abin.coord):
                 abin.coord=self.abin.coord
-            if(self.update or not abin.config_flag):
+            if(redo or not abin.config_flag):
                 abin.config(**kwargs)
         return
 
-    def get_radial(self,ilist=[],info=False,update=False,**kwargs):
+    def set_radial(self,ilist=[],info=False,**kwargs):
         for i in (self.alist if not ilist else ilist):
-            if(update or self.update or not self.abins[i].rad):
-                if(info): print("get_radial:",i)
-                self.abins[i].get_radial(update=update,**kwargs)
+            if(self.update or not self.abins[i].rad):
+                if(info): print("set_radial:",i)
+                self.abins[i].set_radial(**kwargs)
+        return
+
+    def set_slice(self,ilist=[],info=False,**kwargs):
+        for i in (self.alist if not ilist else ilist):
+            if(self.update or not self.abins[i].slice):
+                if(info): print("set_slice:",i)
+                self.abins[i].set_slice(**kwargs)
+        return
+
+    def set_dist(self,ilist=[],info=False,**kwargs):
+        for i in (self.alist if not ilist else ilist):
+            if(self.update or not self.abins[i].slice):
+                if(info): print("set_dist:",i)
+                self.abins[i].set_dist(**kwargs)
+        return
+
+    def set_dist2d(self,ilist=[],info=False,**kwargs):
+        for i in (self.alist if not ilist else ilist):
+            if(self.update or not self.abins[i].slice):
+                if(info): print("set_dist2d:",i)
+                self.abins[i].set_dist2d(**kwargs)
         return
 
     def _remove(self,i):
@@ -311,25 +336,67 @@ class AthenaBinaries:
         return
 
     def clear(self):
+        for i in self.alist:
+            del self.abins[i]
         self.alist=[]
-        self.abins=[None,]*self.nlim
+        self.abins=[None]*self.nlim
         return
 
-    def plot_snapshot(self,ilist,figpath=None,info=False,**kwargs):
-        figpath="../figure/Simu_"+self.path+self.label+f"/" if not figpath else figpath
+    def set_evo(self,varl=['time','mdot'],nrin=1.0):
+        for var in varl:
+            if (var=='time'):
+                self.evo[var]=np.array([self.abins[i].time for i in self.alist])
+            else:
+                irin = np.argmax(self.abin.rad['r']>nrin*float(self.abin.header('problem','r_in')))
+                self.evo[var]=np.array([self.abins[i].rad[var][irin] for i in self.alist])
+
+    def set_evo_dist(self,varl=['temp'],bins=128):
+        self.evo_dist={}
+        for var in varl:
+            self.evo_dist[var]={}
+            loc_l=np.min([self.abins[i].dist[var]['loc'][0] for i in self.alist])
+            loc_u=np.max([self.abins[i].dist[var]['loc'][-1] for i in self.alist])
+            newlocs = np.linspace(loc_l,loc_u,bins)
+            self.evo_dist[var]['dat']=np.empty((self.nlim,bins))
+            self.evo_dist[var]['loc']=newlocs
+            for i in self.alist:
+                locs=0.5*(self.abins[i].dist[var]['loc'][1:]+self.abins[i].dist[var]['loc'][:-1])
+                dist=interp1d(locs,self.abins[i].dist[var]['dat'],bounds_error=False,fill_value=0.0)
+                self.evo_dist[var]['dat'][i]=dist(newlocs)
+        return
+
+    def avg_rad(self,ilist=None):
+        ilist = self.alist if ilist is None else ilist
+        self.rad={}
+        for varname in self.abin.rad.keys():
+            self.rad[varname]=np.mean([self.abins[i].rad[varname] for i in ilist],axis=0)
+        return
+
+    def plot_snapshot(self,ilist,figpath=None,info=False,figdir="../figure/Simu_",**kwargs):
+        figpath=figdir+Path(self.path).parts[-1]+'/'+self.label+"/" if not figpath else figpath
         if not os.path.isdir(figpath):
             os.mkdir(figpath)
         for i in ilist:
             if (info): print("plot snapshot:",i)
-            fig=self.abins[i].plot_snapshot(**kwargs)
+            fig=self.abins[i].plot_snapshot(figdir=figdir,**kwargs)
+            if (i!=ilist[-1]): plt.close(fig)
         return fig
 
-    def make_movie(self,varname,range,duration=0.05,fps=24):
+    def plot_phase(self,ilist,figpath=None,info=False,figdir="../figure/Simu_",**kwargs):
+        figpath=figdir+Path(self.path).parts[-1]+'/'+self.label+"/" if not figpath else figpath
+        if not os.path.isdir(figpath):
+            os.mkdir(figpath)
+        for i in ilist:
+            if (info): print("plot snapshot:",i)
+            fig=self.abins[i].plot_phase(figdir=figdir,**kwargs)
+        return fig
+
+    def make_movie(self,varname,range,duration=0.05,fps=20,figdir="../figure/Simu_"):
         from moviepy.editor import ImageClip, concatenate_videoclips
-        img = (f"../figure/Simu_{self.path}{self.label}/fig_{varname}_{i:04d}.png" for i in range)
+        img = (f"{figdir}{Path(self.path).parts[-1]}/{self.label}/fig_{varname}_{i:04d}.png" for i in range)
         clips = [ImageClip(m).set_duration(duration) for m in img]
         concat_clip = concatenate_videoclips(clips, method="compose")
-        concat_clip.write_videofile(f"../figure/Simu_{self.path}{self.label}/video_{varname}.mp4",fps=fps)
+        concat_clip.write_videofile(f"{figdir}{Path(self.path).parts[-1]}/{self.label}/video_{varname}.mp4",fps=fps)
         return
 
 class AthenaBinary:
@@ -340,6 +407,7 @@ class AthenaBinary:
         self._header={}
         self.raw={}
         self.coord={}
+        self.user_data={}
         self.rad={}
         self.slice={}
         self.dist={}
@@ -387,7 +455,7 @@ class AthenaBinary:
     def save_hdf5(self,filename):
         dic={}
         for k,v in self.__dict__.items():
-            if (k in ['raw', 'mb_logical', 'mb_geometry', 'mb_data', 'coord']):
+            if (k in ['raw', 'mb_data', 'coord', 'user_data']):
                 continue
             dic[k]=v
         save_dict_to_hdf5(dic,filename)
@@ -470,7 +538,7 @@ class AthenaBinary:
         elif (var in ['dens','velx','vely','velz','velr','temp','eint']):
             return self.mb_data[var]
         elif (var in ['mass','pres','entropy','momr','velin','velout','amx','amy','amz',\
-            'ekin','etot','mdot','mdotin','mdotout']):
+            'vtot','ekin','etot','mdot','mdotin','mdotout']):
             if (var=='mass'):
                 return self.coord['vol']*self.mb_data['dens']
             elif (var=='pres'):
@@ -503,6 +571,9 @@ class AthenaBinary:
                 return self.mb_data['dens']*self.data('velout')
             else:
                 print(f"ERROR: No data callled {var}!!!")
+        # user vars
+        elif (var in self.user_data.keys()):
+            return self.user_data[var]
         else:
             print(f"ERROR: No data callled {var}!!!")
         return None
@@ -624,38 +695,54 @@ class AthenaBinary:
         return data
 
     def set_radial(self,varl=['dens','temp','velr','mdot'],varsuf='',bins=1000,\
-        locs=None,weights='vol',update=False):
+        locs=None,weights='vol',redo=False):
         for var in varl:
             varname = var+varsuf
-            if (update or varname not in self.rad.keys()):
+            if (redo or varname not in self.rad.keys()):
                 logr = np.log10(self.coord['r'])
                 weinorm = self.data(weights)
-                if(locs is not None):
-                    weinorm=weinorm*locs
                 hist = np.histogram(logr,bins=bins,weights=weinorm)
                 self.rad['r'] = (10**((hist[1][:-1]+hist[1][1:])/2))
-                rmax = self.rmax
-                rlocs = np.logical_and(hist[0]!=0,self.rad['r']<rmax)
-                self.rad['r'] = self.rad['r'][rlocs]
-                drlocs = np.append(rlocs,True)
-                self.rad['dr'] = (10**((hist[1][drlocs])[1:])-10**((hist[1][drlocs])[:-1]))
-                norm = hist[0][rlocs]
+                r_range = (hist[1][0],hist[1][-1])
+                r_locs = np.logical_and(hist[0]!=0,self.rad['r']<self.rmax)
+                self.rad['r'] = self.rad['r'][r_locs]
+                dr_locs = np.append(r_locs,True)
+                self.rad['dr'] = (10**((hist[1][dr_locs])[1:])-10**((hist[1][dr_locs])[:-1]))
+                if (locs is None):
+                    hist2 = hist
+                else:
+                    hist2 = np.histogram(logr[locs],range=r_range,bins=bins,weights=weinorm[locs])
+                norm = hist2[0][r_locs]
                 break
         for var in varl:
             varname = var+varsuf
-            if (update or varname not in self.rad.keys()):
-                dat = np.histogram(logr,bins=bins,weights=weinorm*self.data(var))
-                if (var in ['dens','velx','vely','velz','velr','temp','eint']):
-                    self.rad[varname] = dat[0][rlocs]/norm
-                elif (var in ['pres','entropy','momr','velin','velout','amx','amy','amz',\
-                    'ekin','etot']):
-                    self.rad[varname] = dat[0][rlocs]/norm
-                elif (var in ['mdot','mdotin','mdotout',]):
-                    self.rad[varname] = dat[0][rlocs]/self.rad['dr']
+            if (redo or varname not in self.rad.keys()):
+                if (locs is None):
+                    dat = np.histogram(logr,range=r_range,bins=bins,weights=weinorm*self.data(var))
                 else:
-                    print(f"ERROR: No variable called {var}!!!")
+                    dat = np.histogram(logr[locs],range=r_range,bins=bins,weights=weinorm[locs]*self.data(var)[locs])
+                if (var in ['mdot','mdotin','mdotout',]):
+                    self.rad[varname] = dat[0][r_locs]/self.rad['dr']
+                else:
+                    self.rad[varname] = dat[0][r_locs]/norm
         return
-        
+
+    def get_slice(self,var='dens',zoom=0,level=0,xyz=[]):
+        if (not xyz):
+            xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
+                   self.x2min/2**zoom,self.x2max/2**zoom,
+                   self.x3min/2**level/self.Nx3*2,self.x3max/2**level/self.Nx3*2]
+        return np.average(self.get_data(var,level=level,xyz=xyz),axis=0),xyz
+
+    def set_slice(self,varl=['dens','temp'],varsuf='',zoom=0,level=0,xyz=[],redo=False):
+        for var in varl:
+            varname = var+varsuf
+            if (redo or varname not in self.slice.keys()):
+                self.slice[varname] = {}
+                data = self.get_slice(var,zoom=zoom,level=level,xyz=xyz)
+                self.slice[varname]['dat'] = data[0]
+                self.slice[varname]['xyz'] = data[1]
+
     def get_region(self,x0,x1,y0,y1,z0=0.0,z1=0.0):
         if (x0<x1):
             xloc=np.logical_and((self.coord['x']+0.5*self.coord['dx'])>x0,\
@@ -678,31 +765,63 @@ class AthenaBinary:
         locs = np.where(np.logical_and(np.logical_and(xloc,yloc),zloc))
         return locs
 
-    def plot_snapshot(self,var='dens',varname=None,weivar='vol',level=None,zoom=1,xyz=[],bins=None,\
+    def set_dist(self,varl=['dens','temp','pres'],varsuf='',bins=128,weights='vol',\
+        locs=None,redo=False):
+        for var in varl:
+            varname = var+varsuf
+            if (redo or varname not in self.dist.keys()):
+                weinorm = self.data(weights)
+        for var in varl:
+            varname = var+varsuf
+            if (redo or varname not in self.dist.keys()):
+                if (locs is None):
+                    dat = np.histogram(np.log10(self.data(var)),bins=bins,weights=weinorm)
+                else:
+                    dat = np.histogram(np.log10(self.data(var)[locs]),bins=bins,weights=weinorm[locs])
+                self.dist[varname] = {}
+                self.dist[varname]['dat'] = dat[0]
+                self.dist[varname]['loc'] = dat[1]
+        return 
+
+    def set_dist2d(self,varl2d=[['dens','temp'],['dens','pres']],varsuf='',bins=128,\
+        weights='vol',locs=None,redo=False):
+        weinorm = self.data(weights)
+        for varl in varl2d:
+            varname = varl[0]+"_"+varl[1]+varsuf
+            if (redo or varname not in self.dist2d.keys()):
+                dats=[None,None]
+                for i,var in enumerate(varl):
+                    dats[i] = np.log10(self.data(var))
+                if (locs is None):
+                    dat = np.histogram2d(dats[0].ravel(),dats[1].ravel(),bins=bins,weights=weinorm.ravel())
+                else:
+                    dat = np.histogram2d(dats[0][locs],dats[1][locs],bins=bins,weights=weinorm[locs])
+                self.dist2d[varname] = {}
+                self.dist2d[varname]['dat'] = dat[0]
+                self.dist2d[varname]['loc1'] = dat[1]
+                self.dist2d[varname]['loc2'] = dat[2]
+        return 
+
+    def plot_snapshot(self,var='dens',varname='',zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
                       title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
-                      norm=LogNorm(1e-1,1e1),save=False,savepath='',dpi=200,**kwargs):
+                      norm=LogNorm(1e-1,1e1),save=False,figdir='../figure/Simu_',\
+                      savepath='',figlabel='',dpi=200,**kwargs):
         fig=plt.figure(dpi=dpi)
         ax = plt.axes()
         bins=int(np.min([self.Nx1,self.Nx2,self.Nx3])) if not bins else bins
         if (not xyz):
-            xyz = [self.x1min/zoom,self.x1max/zoom,self.x2min/zoom,self.x2max/zoom,0.0,0.0]
+            xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
+                   self.x2min/2**zoom,self.x2max/2**zoom,
+                   self.x3min/2**level/self.Nx3*2,self.x3max/2**level/self.Nx3*2]
+        if varname in self.slice.keys():
+            slc = self.slice[varname]['dat']*unit
+            xyz = self.slice[varname]['xyz']
+        else:
+            slc = self.get_slice(var,zoom=zoom,level=level,xyz=xyz)[0]*unit
         x0,x1,y0,y1,z0,z1 = xyz[0],xyz[1],xyz[2],xyz[3],xyz[4],xyz[5]
-        locs = self.get_region(x0,x1,y0,y1,z0,z1)
-        if isinstance(weivar,str):
-            weidata=self.coord[weivar][locs]
-        else:
-            weidata=weivar[locs]
-        x=self.coord['x'][locs]
-        y=self.coord['y'][locs]
-        imgnorm = np.histogram2d(x,y,bins=bins,weights=weidata)[0]
-        if isinstance(var,str):
-            data=self.mb_data[var][locs]
-            varname=var if not varname else varname
-        else:
-            data=var[locs]
-        img = np.histogram2d(x,y,bins=bins,weights=weidata*data)[0]/imgnorm
-
-        im=ax.imshow(img.swapaxes(0,1)[::-1,:],extent=(x0,x1,y0,y1),norm=norm,cmap=cmap,**kwargs)
+        
+        im=ax.imshow(slc[::-1,:],extent=(x0,x1,y0,y1),norm=norm,cmap=cmap,**kwargs)
+        #im=ax.imshow(slc.swapaxes(0,1)[::-1,:],extent=(x0,x1,y0,y1),norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(np.rot90(data),cmap='plasma',norm=LogNorm(0.9e-1,1.1e1),extent=extent)
         if (self.header('problem','r_in')): 
             ax.add_patch(plt.Circle((0,0),float(self.header('problem','r_in')),ec='k',fc='#00000000'))
@@ -713,36 +832,23 @@ class AthenaBinary:
         ax.set_title(f"Time = {self.time}" if not title else title)
         fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
         if (save):
-            fig.savefig(f"../figure/Simu_{self.path}/{self.label}/fig_{varname}_{self.num:04d}.png"\
+            fig.savefig(f"{figdir}{Path(self.path).parts[-1]}/{self.label}/fig_{varname}{figlabel}_{self.num:04d}.png"\
                         if not savepath else savepath)
         return fig
 
-    def set_dist(self,varl=['dens','temp','pres'],varsuf='',bins=100,weights='vol',\
-        locs=None,update=False):
-        for var in varl:
-            varname = var+varsuf
-            if (update or varname not in self.dist.keys()):
-                weinorm = self.data(weights)
-                if(locs is not None):
-                    weinorm=weinorm*locs
-        for var in varl:
-            varname = var+varsuf
-            if (update or varname not in self.dist.keys()):
-                dat = np.histogram(np.log10(self.data(var)),bins=bins,weights=weinorm)
-                self.dist[varname] = dat
-        return 
+    def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
+                   norm=LogNorm(1e-3,1e1),extent=None,save=False,savepath='',figdir='../figure/Simu_',\
+                   dpi=128,aspect='auto',**kwargs):
+        fig = plt.figure(dpi=dpi)
+        ax = plt.axes()
+        dat = self.dist2d[varname]
+        extent = [dat['loc1'].min(),dat['loc1'].max(),dat['loc2'].min(),dat['loc2'].max()] if extent is None else extent
+        im = ax.imshow(dat['dat'].swapaxes(0,1)[::-1,:],extent=extent,norm=norm,cmap=cmap,aspect=aspect,**kwargs)
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="4%", pad=0.02)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(f"Time = {self.time}" if not title else title)
+        fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
+        return fig
 
-    def set_dist2d(self,varl2d=[['dens','temp'],['dens','pres']],varsuf='',bins=100,\
-        weights='vol',locs=None,update=False):
-        weinorm = self.data(weights)
-        if(locs is not None):
-            weinorm=weinorm*locs
-        for varl in varl2d:
-            varname = varl[0]+"_"+varl[1]+varsuf
-            if (update or varname not in self.dist2d.keys()):
-                dats=[None,None]
-                for i,var in enumerate(varl):
-                    dats[i] = np.log10(self.data(var))
-                self.dist2d[varname]=np.histogram2d(dats[0].ravel(),dats[1].ravel(),bins=bins,\
-                    weights=weinorm.ravel())
-        return 
