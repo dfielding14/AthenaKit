@@ -3,12 +3,15 @@ from pathlib import Path
 import numpy as np
 import struct
 import h5py
+import warnings
+
 from matplotlib import pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import Normalize
 from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import interp1d
+from celluloid import Camera
 
 # from bin_convert.py
 def read_binary(filename):
@@ -410,27 +413,36 @@ class AthenaBinaries:
                     self.evo_dist[var]['dat'][i]/=np.sum(self.evo_dist[var]['dat'][i])*(newlocs[1]-newlocs[0])
         return
 
-    def avg_rad(self,ilist=None):
+    def avg_rad(self,ilist=None,keys=None):
         ilist = self.alist if ilist is None else ilist
         self.rad={}
-        for varname in self.abin.rad.keys():
+        keys = self.abin.rad.keys() if (keys == None) else keys
+        for varname in keys:
             self.rad[varname]=np.mean([self.abins[i].rad[varname] for i in ilist],axis=0)
         return
 
-    def plot_snapshot(self,ilist,figpath=None,info=False,figdir="../figure/Simu_",save=False,**kwargs):
-        figpath=figdir+Path(self.path).parts[-1]+'/'+self.label+"/" if not figpath else figpath
-        if save and not os.path.isdir(figpath):
-            os.mkdir(figpath)
+    def plot_snapshot(self,ilist,info=False,figdir="../figure/Simu_",save=False,**kwargs):
         for i in ilist:
             if (info): print("plot snapshot:",i)
             fig=self.abins[i].plot_snapshot(figdir=figdir,save=save,**kwargs)
             if (i!=ilist[-1]): plt.close(fig)
         return fig
 
+    def plot_animation(self, ilist, animate=True, info=False, **kwargs):
+        #Plots i
+        fig = plt.figure()
+        ax = plt.axes()
+        camera = Camera(fig)
+        if (animate):
+            for t_idx in ilist:
+                if (info): print("plot animation:",t_idx)
+                #self.plot_snapshot([t_idx],fig=fig,ax=ax,**kwargs)
+                self.abins[t_idx].plot_snapshot(fig=fig,ax=ax,**kwargs)
+                camera.snap()
+            from IPython.display import HTML
+            return HTML(camera.animate().to_jshtml())
+
     def plot_phase(self,ilist,figpath=None,info=False,figdir="../figure/Simu_",**kwargs):
-        figpath=figdir+Path(self.path).parts[-1]+'/'+self.label+"/" if not figpath else figpath
-        if not os.path.isdir(figpath):
-            os.mkdir(figpath)
         for i in ilist:
             if (info): print("plot snapshot:",i)
             fig=self.abins[i].plot_phase(figdir=figdir,**kwargs)
@@ -491,7 +503,7 @@ class AthenaBinary:
         self.mb_data=self.raw['mb_data']
         for var in self.raw['var_names']:
             self.mb_data[var]=np.asarray(self.mb_data[var])
-        self.use_e=float(self.header('hydro','use_e',True))
+        self.use_e=bool(self.header('hydro','use_e',True))
         self.gamma=float(self.header('hydro','gamma',5/3))
         self.init_flag=False
         self.config_flag=False
@@ -525,10 +537,10 @@ class AthenaBinary:
             self.init_flag=True
         return
 
-    def config(self):
+    def config(self,**kwargs):
         if (not self.config_flag):
             self.init()
-            self.config_data()
+            self.config_data(**kwargs)
             self.config_flag=True
         return
 
@@ -551,7 +563,7 @@ class AthenaBinary:
         if blockname in self._header.keys():
             if keyname in self._header[blockname].keys():
                 return self._header[blockname][keyname]
-        print(f'no parameter called {blockname}/{keyname}, return default value')
+        warnings.warn(f'Warning: no parameter called {blockname}/{keyname}, return default value: {default}')
         return default
 
     def set_coord(self):
@@ -568,15 +580,16 @@ class AthenaBinary:
         self.coord['vol']=self.coord['dx']*self.coord['dy']*self.coord['dz']
         return
     
-    def config_data(self):
+    def config_data(self,velr=False):
         if (self.use_e):
             self.mb_data['temp']=(self.gamma-1)*self.mb_data['eint']/self.mb_data['dens']
         else:
             self.mb_data['temp']=self.mb_data['eint']
             self.mb_data['eint']=self.mb_data['temp']*self.mb_data['dens']/(self.gamma-1)
-        self.mb_data['velr']=(self.mb_data['velx']*self.coord['x']+\
-                              self.mb_data['vely']*self.coord['y']+\
-                              self.mb_data['velz']*self.coord['z'])/self.coord['r']
+        if (velr):
+            self.mb_data['velr']=(self.mb_data['velx']*self.coord['x']+\
+                                  self.mb_data['vely']*self.coord['y']+\
+                                  self.mb_data['velz']*self.coord['z'])/self.coord['r']
         return
 
     def data(self,var):
@@ -585,9 +598,10 @@ class AthenaBinary:
         #elif (var in ['dens','velx','vely','velz','velr','temp','eint']):
         elif (var in self.mb_data.keys()):
             return self.mb_data[var]
-        elif (var in ['ones','mass','pres','entropy','momx','momy','momz','momtot','momr',\
-            'velin','velout','vtot2','vtot','vrot','ekin','etot','amx','amy','amz','amtot',\
-            'mdot','mdotin','mdotout']):
+        elif (var in ['ones','mass','pres','entropy','momx','momy','momz','momtot','velr',\
+            'momr','velin','velout','vtot2','vtot','vrot','ekin','etot','amx','amy','amz',\
+            'amtot','mdot','mdotin','mdotout','momflx','momflxin','momflxout',\
+            'ekflx','ekflxin','ekflxout']):
             if (var=='ones'):
                 return np.ones(self.mb_data['dens'].shape)
             if (var=='mass'):
@@ -602,12 +616,16 @@ class AthenaBinary:
                 return self.mb_data['vely']*self.mb_data['dens']
             elif (var=='momz'):
                 return self.mb_data['velz']*self.mb_data['dens']
+            elif (var=='velr'):
+                return (self.mb_data['velx']*self.coord['x']+\
+                        self.mb_data['vely']*self.coord['y']+\
+                        self.mb_data['velz']*self.coord['z'])/self.coord['r']
             elif (var=='momr'):
-                return self.mb_data['velr']*self.mb_data['dens']
+                return self.data('velr')*self.mb_data['dens']
             elif (var=='velin'):
-                return np.minimum(self.mb_data['velr'],0.0)
+                return np.minimum(self.data('velr'),0.0)
             elif (var=='velout'):
-                return np.maximum(self.mb_data['velr'],0.0)
+                return np.maximum(self.data('velr'),0.0)
             elif (var=='vtot2'):
                 return self.data('velx')**2+self.data('vely')**2+self.data('velz')**2
             elif (var=='vtot'):
@@ -629,18 +647,30 @@ class AthenaBinary:
             elif (var=='amtot'):
                 return self.data('r')*self.data('vrot')
             elif (var=='mdot'):
-                return self.mb_data['dens']*self.mb_data['velr']
+                return self.mb_data['dens']*self.data('velr')
             elif (var=='mdotin'):
                 return self.mb_data['dens']*self.data('velin')
             elif (var=='mdotout'):
                 return self.mb_data['dens']*self.data('velout')
+            elif (var=='momflx'):
+                return self.mb_data['dens']*self.data('velr')*self.data('velr')
+            elif (var=='momflxin'):
+                return self.mb_data['dens']*self.data('velr')*self.data('velin')
+            elif (var=='momflxout'):
+                return self.mb_data['dens']*self.data('velr')*self.data('velout')
+            elif (var=='ekflx'):
+                return self.mb_data['dens']*.5*self.data('vtot2')*self.data('velr')
+            elif (var=='ekflxin'):
+                return self.mb_data['dens']*.5*self.data('vtot2')*self.data('velin')
+            elif (var=='ekflxout'):
+                return self.mb_data['dens']*.5*self.data('vtot2')*self.data('velout')
             else:
-                print(f"ERROR: No data callled {var}!!!")
+                raise ValueError(f"No variable callled '{var}' ")
         # user vars
         elif (var in self.user_data.keys()):
             return self.user_data[var]
         else:
-            print(f"ERROR: No data callled {var}!!!")
+            raise ValueError(f"No variable callled '{var}' ")
         return None
 
     def get_coord(self,level=0,xyz=[]):
@@ -659,9 +689,9 @@ class AthenaBinary:
         k_min = int((xyz[4]-self.x3min)*nx3_fac)
         k_max = int((xyz[5]-self.x3min)*nx3_fac)
         # TODO(@mhguo)
-        print(nx1_fac,i_min,i_max)
-        print(nx2_fac,j_min,j_max)
-        print(nx3_fac,k_min,k_max)
+        print("coord: ",nx1_fac,i_min,i_max)
+        print("coord: ",nx2_fac,j_min,j_max)
+        print("coord: ",nx3_fac,k_min,k_max)
         data = np.zeros((k_max-k_min, j_max-j_min, i_max-i_min))
         x=np.linspace(xyz[0],xyz[1],i_max-i_min)
         y=np.linspace(xyz[2],xyz[3],j_max-j_min)
@@ -835,7 +865,7 @@ class AthenaBinary:
                     dat = np.histogram(logr,range=r_range,bins=bins,weights=weinorm*self.data(var))
                 else:
                     dat = np.histogram(logr[locs],range=r_range,bins=bins,weights=weinorm[locs]*self.data(var)[locs])
-                if (var in ['mdot','mdotin','mdotout',]):
+                if (var in ['mdot','mdotin','mdotout','momflx','momflxin','momflxout','ekflx','ekflxin','ekflxout']):
                     self.rad[varname] = dat[0][r_locs]/self.rad['dr']
                 else:
                     self.rad[varname] = dat[0][r_locs]/norm
@@ -900,6 +930,7 @@ class AthenaBinary:
                     data = np.log10(self.data(var))
                 else:
                     data = self.data(var)
+                np.nan_to_num(data, copy=False, posinf=0.0, neginf=0.0)
                 if (locs is None):
                     dat = np.histogram(data,bins=bins,weights=weinorm)
                 else:
@@ -919,9 +950,9 @@ class AthenaBinary:
                 for i,var in enumerate(varl):
                     if (scales[i]=='log'):
                         dats[i] = np.log10(self.data(var))
-                        dats[i][dats[i]==-np.inf]=0.0
                     else:
                         dats[i] = self.data(var)
+                    np.nan_to_num(dats[i], copy=False, posinf=0.0, neginf=0.0)
                 if (locs is None):
                     dat = np.histogram2d(dats[0].ravel(),dats[1].ravel(),bins=bins,\
                         weights=weinorm.ravel())
@@ -936,9 +967,9 @@ class AthenaBinary:
 
     def plot_snapshot(self,var='dens',varname='',zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
                       title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
-                      norm=LogNorm(1e-1,1e1),save=False,figdir='../figure/Simu_',\
+                      norm=LogNorm(1e-1,1e1),save=False,figdir='../figure/Simu_',figpath=None,\
                       savepath='',savelabel='',figlabel='',dpi=200,vel=None,stream=None,circle=True,\
-                      fig=None,ax=None,xyunit=1.0,**kwargs):
+                      fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         bins=int(np.min([self.Nx1,self.Nx2,self.Nx3])) if not bins else bins
@@ -952,15 +983,25 @@ class AthenaBinary:
         else:
             slc = self.get_slice(var,zoom=zoom,level=level,xyz=xyz)[0]*unit
         x0,x1,y0,y1,z0,z1 = xyz[0],xyz[1],xyz[2],xyz[3],xyz[4],xyz[5]
-        
         im=ax.imshow(slc[::-1,:],extent=(x0*xyunit,x1*xyunit,y0*xyunit,y1*xyunit),\
             norm=norm,cmap=cmap,**kwargs)
         if (vel is not None):
-            x,y,z = self.get_slice_coord(zoom=zoom,level=vel,xyz=xyz)[:3]
+            x,y,z = self.get_slice_coord(zoom=zoom,level=vel,xyz=list(xyz))[:3]
+            if (f'velx_{zoom}' in self.slice.keys()):
+                u = self.slice[f'velx_{zoom}']['dat']
+            else:
+                u = self.get_slice('velx',zoom=zoom,level=level,xyz=list(xyz))[0]
+            if (f'vely_{zoom}' in self.slice.keys()):
+                v = self.slice[f'vely_{zoom}']['dat']
+            else:
+                v = self.get_slice('vely',zoom=zoom,level=level,xyz=list(xyz))[0]
             #x = self.get_slice('x',zoom=zoom,level=vel,xyz=xyz)[0]
             #y = self.get_slice('y',zoom=zoom,level=vel,xyz=xyz)[0]
-            u = self.get_slice('velx',zoom=zoom,level=vel,xyz=xyz)[0]
-            v = self.get_slice('vely',zoom=zoom,level=vel,xyz=xyz)[0]
+            fac=max(int(2**(level-vel)),1)
+            n0,n1=int(u.shape[0]/fac),int(u.shape[1]/fac)
+            u=np.average(u.reshape(n0,fac,n1,fac),axis=(1,3))
+            n0,n1=int(v.shape[0]/fac),int(v.shape[1]/fac)
+            v=np.average(v.reshape(n0,fac,n1,fac),axis=(1,3))
             ax.quiver(x*xyunit, y*xyunit, u, v)
         if (stream is not None):
             x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz)[:3]
@@ -980,20 +1021,26 @@ class AthenaBinary:
         #im=ax.imshow(np.rot90(data),cmap='plasma',norm=LogNorm(0.9e-1,1.1e1),extent=extent)
         if(circle and self.header('problem','r_in')):
             ax.add_patch(plt.Circle((0,0),float(self.header('problem','r_in')),ec='k',fc='#00000000'))
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="4%", pad=0.02)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
-        ax.set_title(f"Time = {self.time}" if not title else title)
-        fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
+        if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
+        if (colorbar):
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="4%", pad=0.02)
+            fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
         if (save):
-            fig.savefig(f"{figdir}{Path(self.path).parts[-1]}/{self.label}/fig_{varname+figlabel if not savelabel else savelabel}_{self.num:04d}.png"\
+            figpath=figdir+Path(self.path).parts[-1]+'/'+self.label+"/" if not figpath else figpath
+            if (not os.path.isdir(figpath)):
+                os.mkdir(figpath)
+            fig.savefig(f"{figpath}fig_{varname+figlabel if not savelabel else savelabel}_{self.num:04d}.png"\
                         if not savepath else savepath, bbox_inches='tight')
+        if (returnim):
+            return fig,im
         return fig
 
     def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
                    norm=LogNorm(1e-3,1e1),extent=None,save=False,savepath='',figdir='../figure/Simu_',\
-                   fig=None,ax=None,dpi=128,aspect='auto',**kwargs):
+                   figpath='',fig=None,ax=None,dpi=128,aspect='auto',**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         dat = self.dist2d[varname]
@@ -1003,9 +1050,22 @@ class AthenaBinary:
         cax = divider.append_axes("right", size="4%", pad=0.02)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
-        ax.set_title(f"Time = {self.time}" if not title else title)
+        if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
         fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
+        if (save):
+            figpath=figdir+Path(self.path).parts[-1]+'/'+self.label+"/" if not figpath else figpath
+            if not os.path.isdir(figpath):
+                os.mkdir(figpath)
+            fig.savefig(f"{figpath}fig_{varname}_{self.num:04d}.png"\
+                        if not savepath else savepath, bbox_inches='tight')
         return fig
+
+    def savefig(self,fig,path,**kwargs):
+        figpath=os.path.dirname(path)
+        if not os.path.isdir(figpath):
+            os.mkdir(figpath)
+        fig.savefig(path,**kwargs)
+
 
     # TODO (@mhguo): modify this!
     def plot_snapshots(self,var='dens',varname='',zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
