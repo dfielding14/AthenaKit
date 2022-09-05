@@ -11,7 +11,10 @@ from matplotlib.colors import Normalize
 from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import interp1d
-from celluloid import Camera
+try:
+    from celluloid import Camera
+except:
+    warnings.warn("No module named 'celluloid'")
 
 # from bin_convert.py
 def read_binary(filename):
@@ -689,9 +692,9 @@ class AthenaBinary:
         k_min = int((xyz[4]-self.x3min)*nx3_fac)
         k_max = int((xyz[5]-self.x3min)*nx3_fac)
         # TODO(@mhguo)
-        print("coord: ",nx1_fac,i_min,i_max)
-        print("coord: ",nx2_fac,j_min,j_max)
-        print("coord: ",nx3_fac,k_min,k_max)
+        #print("coord: ",nx1_fac,i_min,i_max)
+        #print("coord: ",nx2_fac,j_min,j_max)
+        #print("coord: ",nx3_fac,k_min,k_max)
         data = np.zeros((k_max-k_min, j_max-j_min, i_max-i_min))
         x=np.linspace(xyz[0],xyz[1],i_max-i_min)
         y=np.linspace(xyz[2],xyz[3],j_max-j_min)
@@ -969,14 +972,18 @@ class AthenaBinary:
                       title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
                       norm=LogNorm(1e-1,1e1),save=False,figdir='../figure/Simu_',figpath=None,\
                       savepath='',savelabel='',figlabel='',dpi=200,vel=None,stream=None,circle=True,\
-                      fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,**kwargs):
+                      fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,stream_linewidth=None,\
+                      stream_arrowsize=None,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         bins=int(np.min([self.Nx1,self.Nx2,self.Nx3])) if not bins else bins
+        print('varname: ',varname)
+        varname = var+f'_{zoom}' if not varname else varname
+        print('new varname: ',varname)
         if (not xyz):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
                    self.x2min/2**zoom,self.x2max/2**zoom,
-                   self.x3min/2**level/self.Nx3*2,self.x3max/2**level/self.Nx3*2]
+                   self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
         if varname in self.slice.keys():
             slc = self.slice[varname]['dat']*unit
             xyz = self.slice[varname]['xyz']
@@ -1007,15 +1014,22 @@ class AthenaBinary:
             x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz)[:3]
             #x = self.get_slice('x',zoom=zoom,level=stream,xyz=xyz)[0]
             #y = self.get_slice('y',zoom=zoom,level=stream,xyz=xyz)[0]
-            u = self.get_slice('velx',zoom=zoom,level=stream,xyz=xyz)[0]
-            v = self.get_slice('vely',zoom=zoom,level=stream,xyz=xyz)[0]
+            if (f'velx_{zoom}' in self.slice.keys()):
+                u = self.slice[f'velx_{zoom}']['dat']
+            else:
+                u = self.get_slice('velx',zoom=zoom,level=level,xyz=list(xyz))[0]
+            if (f'vely_{zoom}' in self.slice.keys()):
+                v = self.slice[f'vely_{zoom}']['dat']
+            else:
+                v = self.get_slice('vely',zoom=zoom,level=level,xyz=list(xyz))[0]
             #x,y=np.meshgrid(x,y)
             #z,x=np.meshgrid(z,x)
             #np.mgrid[-w:w:100j, -w:w:100j]
             #beg=8
             #step=16
             #ax.streamplot(x[beg::step,beg::step], z[beg::step,beg::step], (u[0]/norm[0])[beg::step,beg::step], (v[0]/norm[0])[beg::step,beg::step])
-            ax.streamplot(x*xyunit, y*xyunit, u, v,color='k')
+            #print(x.shape,y.shape,u.shape,v.shape)
+            ax.streamplot(x*xyunit, y*xyunit, u, v,color='k',linewidth=stream_linewidth,arrowsize=stream_arrowsize)
 
         #im=ax.imshow(slc.swapaxes(0,1)[::-1,:],extent=(x0,x1,y0,y1),norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(np.rot90(data),cmap='plasma',norm=LogNorm(0.9e-1,1.1e1),extent=extent)
@@ -1037,6 +1051,29 @@ class AthenaBinary:
         if (returnim):
             return fig,im
         return fig
+    def streamplot(self,zoom=0,level=0,stream=0,xyz=[],unit=1.0,bins=None,\
+                      fig=None,ax=None,xyunit=1.0,**kwargs):
+        x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz)[:3]
+        #x = self.get_slice('x',zoom=zoom,level=stream,xyz=xyz)[0]
+        #y = self.get_slice('y',zoom=zoom,level=stream,xyz=xyz)[0]
+        if (f'velx_{zoom}' in self.slice.keys()):
+            u = self.slice[f'velx_{zoom}']['dat']
+        else:
+            u = self.get_slice('velx',zoom=zoom,level=level,xyz=list(xyz))[0]
+        if (f'vely_{zoom}' in self.slice.keys()):
+            v = self.slice[f'vely_{zoom}']['dat']
+        else:
+            v = self.get_slice('vely',zoom=zoom,level=level,xyz=list(xyz))[0]
+        #x,y=np.meshgrid(x,y)
+        #z,x=np.meshgrid(z,x)
+        #np.mgrid[-w:w:100j, -w:w:100j]
+        #beg=8
+        #step=16
+        #ax.streamplot(x[beg::step,beg::step], z[beg::step,beg::step], (u[0]/norm[0])[beg::step,beg::step], (v[0]/norm[0])[beg::step,beg::step])
+        #print(x.shape,y.shape,u.shape,v.shape)
+        strm=ax.streamplot(x*xyunit, y*xyunit, u*unit, v*unit,**kwargs)
+        return strm
+
 
     def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
                    norm=LogNorm(1e-3,1e1),extent=None,save=False,savepath='',figdir='../figure/Simu_',\
@@ -1146,11 +1183,21 @@ class AthenaBinary:
                 orient[1]*self.get_data('vely',level=level,xyz=xyz)+\
                 orient[2]*self.get_data('velz',level=level,xyz=xyz)
         elif (var=='v_ox'):
-            xvx=x*self.get_data('velx',level=level,xyz=xyz)
-            yvy=y*self.get_data('vely',level=level,xyz=xyz)
-            zvz=z*self.get_data('velz',level=level,xyz=xyz)
+            o0=orient[0]
+            o1=orient[1]
+            o2=orient[2]
+            vx=self.get_data('velx',level=level,xyz=xyz)
+            vy=self.get_data('vely',level=level,xyz=xyz)
+            vz=self.get_data('velz',level=level,xyz=xyz)
+            #dat = (x*((1.0-o0*o0)*vx       - o0*o1*vy       - o0*o2*vz)
+            #      +y*(     -o1*o0*vx + (1.0-o1*o1)*vy       - o1*o2*vz)
+            #      +z*(     -o2*o0*vx       - o2*o1*vy + (1.0-o2*o2)*vz))/ox
+            dat = ((1.0-o0*o0)*x*vx  + (1.0-o1*o1)*y*vy  + (1.0-o2*o2)*z*vz
+                  -o0*o1*(x*vy+y*vx) - o1*o2*(y*vz+z*vy) - o2*o0*(z*vx+x*vz)
+                  )/ox
             #dat=(orient[0]*(yvy+zvz)+orient[1]*(zvz+xvx)+orient[2]*(xvx+yvy))/ox
-            dat=(xvx*(orient[1]+orient[2])+yvy*(orient[2]+orient[0])+zvz*(orient[0]+orient[1]))/ox
+            #dat=(xvx*(orient[1]+orient[2])+yvy*(orient[2]+orient[0])+zvz*(orient[0]+orient[1]))/ox
+            #dat=dat/ox
         else:
             dat=self.get_data(var,level=level,xyz=xyz)
         img = np.histogram2d(ox[locs],oz[locs],bins=bins,weights=dat[locs])

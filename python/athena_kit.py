@@ -1,5 +1,7 @@
+from time import sleep
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib import colors as clr
 from matplotlib import cm
 from matplotlib.colors import Normalize
 from matplotlib.colors import LogNorm
@@ -63,6 +65,11 @@ class Units:
     @property
     def conductivity_cgs(self):
         return self.pressure_cgs*self.velocity_cgs*self.length_cgs/self.temperature_cgs
+    @property
+    def entropy_kevcm2(self):
+        kev_erg=1.60218e-09
+        gamma=5./3.
+        return self.pressure_cgs/kev_erg/self.number_density_cgs**gamma
 
 mu=0.618
 unit=Units(lunit=kpc_cgs,munit=mu*atomic_mass_unit_cgs*kpc_cgs**3,mu=mu)
@@ -107,10 +114,28 @@ def CoolFnShure(T):
     tcool = (lhd[ipps+1]*dx - lhd[ipps]*(dx - 0.04))*25.0
     return pow(10.0,tcool)
 
+# parameters
+gamma       = 5/3     # gamma
+potential   = 1       # turn on potential
+m_bh        = 4.3e2   # BH mass: 6.5e9 Msun # Mass unit: 1.516e7 Msun
+r_in        = 0.0     # inner radius: 100 pc
+m_star      = 2e4     # 3e11 Msun # Mass unit: 1.516e7 Msun
+r_star      = 2.0     # 2kpc
+m_dm        = 2.0e6   # DM Mass: 3.0e13 Msun # Mass unit: 1.516e7 Msun
+r_dm        = 60.0    # 60kpc
+sink_d      = 1e-2    # density of sink cells
+sink_t      = 1e-1    # eint/dens=1/gm1*T: temperature of sink cells
+rad_entry   = 2.0
+dens_entry  = 1e-1
+#k_0         = 1.0
+#xi          = 1.75
+k_0         = 1.1
+xi          = 1.1
+
 # profile solver
 def NFWMass(r,ms,rs):
     return ms*(np.log(1+r/rs)-r/(rs+r))
-def TotMass(r,m,mc,rc,ms,rs):
+def TotMass(r,m=m_bh,mc=m_star,rc=r_star,ms=m_dm,rs=r_dm):
     return m+NFWMass(r,mc,rc)+NFWMass(r,ms,rs)
 def Acceleration(r,m,mc,rc,ms,rs,g):
     return -g*(TotMass(r,m,mc,rc,ms,rs))/r**2
@@ -157,28 +182,10 @@ def SolveDens(N=2048,logh=0.002):
     return rss
 
 # solve
-gamma       = 5/3     # gamma
-potential   = 1       # turn on potential
-m_bh        = 4.3e2   # BH mass: 6.5e9 Msun # Mass unit: 1.516e7 Msun
-r_in        = 0.0     # inner radius: 100 pc
-m_star      = 2e4     # 3e11 Msun # Mass unit: 1.516e7 Msun
-r_star      = 2.0     # 2kpc
-m_dm        = 3.0e6   # DM Mass: 4.5e13 Msun # Mass unit: 1.516e7 Msun
-r_dm        = 80.0    # 2kpc
-sink_d      = 1e-2    # density of sink cells
-sink_t      = 1e-1    # eint/dens=1/gm1*T: temperature of sink cells
-rad_entry   = 2.0
-dens_entry  = 1e-1
-#k_0         = 1.0
-#xi          = 1.75
-k_0         = 1.1
-xi          = 1.1
-
-
-ran=SolveDens(N=4096)
+ran=SolveDens(N=8000)
 ran['mass']=TotMass(ran['r'],m_bh,m_star,r_star,m_dm,r_dm)
 ran['g']=Acceleration(ran['r'],m_bh,m_star,r_star,m_dm,r_dm,unit.grav_constant)
-ran['t_ff']=np.sqrt(2.*ran['r']/-ran['g'])
+ran['t_ff']=np.pi/4.0*np.sqrt(2.*ran['r']/-ran['g'])
 ran['v_ff']=np.sqrt(2.*ran['r']*-ran['g'])
 ran['v_kep']=np.sqrt(ran['r']*-ran['g'])
 ran['am_kep']=np.sqrt(ran['r']**3*-ran['g'])
@@ -200,6 +207,7 @@ def rho_T_t_cool(cooling_rho=np.logspace(-4,4,400),cooling_temp=np.logspace(0,8,
 
 # analytical function
 class SNR:
+    # TODO(@mhguo): add units!!!
     def __init__(self,E,n,M=3):
         #E [erg]
         #n cm^-3
@@ -211,6 +219,7 @@ class SNR:
         self.t_sf=0.044*E**0.22*n**-0.55
         self.r_sf=22.6*E**0.29*n**-0.42
         self.mom_sf=2.17e5*E**0.93*n**-0.13
+        self.evo={}
         return
     
     @np.vectorize
@@ -223,6 +232,168 @@ class SNR:
         #    return 30*(t/0.1)**(2/7)
     def r(self,t):
         return self._r(self,t)
+
+    def config(self,t=np.logspace(-4,0)):
+        self.evo['time']=t
+        self.evo['r']=self.r(t)
+        self.evo['m']=4/3*np.pi*self.n*self.evo['r']**3
+        self.evo['v']=None
+
+##########################################################################################
+## Scipy Measurements Label with boundary correction
+##########################################################################################
+import scipy.ndimage as sn
+
+default_struct = sn.generate_binary_structure(3,3)
+
+def clean_tuples(tuples):
+    return sorted(set([(min(pair),max(pair)) for pair in tuples]))
+
+def merge_tuples_unionfind(tuples):
+    # use classic algorithms union find with path compression
+    # https://enp.wikipedia.org/wiki/Disjoint-set_data_structure
+    parent_dict = {}
+
+    def subfind(x):
+        # update roots while visiting parents 
+        if parent_dict[x] != x:
+            parent_dict[x] = subfind(parent_dict[x])
+        return parent_dict[x]
+
+    def find(x):
+        if x not in parent_dict:
+            # x forms new set and becomes a root
+            parent_dict[x] = x
+            return x
+        if parent_dict[x] != x:
+            # follow chain of parents of parents to find root 
+            parent_dict[x] = subfind(parent_dict[x])
+        return parent_dict[x]
+
+    # each tuple represents a connection between two items 
+    # so merge them by setting root to be the lower root. 
+    for p0,p1 in list(tuples):
+        r0 = find(p0)
+        r1 = find(p1)
+        if r0 < r1:
+            parent_dict[r1] = r0
+        elif r1 < r0:
+            parent_dict[r0] = r1
+
+    # for unique parents, subfind the root, replace occurrences with root
+    vs = set(parent_dict.values())
+    for parent in vs:
+        sp = subfind(parent)
+        if sp != parent:
+            for key in parent_dict:
+                if parent_dict[key] == parent:
+                    parent_dict[key] = sp
+
+    return parent_dict
+
+def make_dict(mask,struct,boundary,bargs):
+    label,things = sn.label(mask,structure=struct)
+    cs = clean_tuples(boundary(label,bargs))
+    slc = sn.labeled_comprehension(mask,label,range(1,things+1),
+                                   lambda a,b: b,
+                                   list,
+                                   None,
+                                   pass_positions=True)
+    outdict = dict(zip(range(1,things+1),slc))
+    ownerof = merge_tuples_unionfind(cs)
+    for key in ownerof:
+        if key != ownerof[key]:
+            # add key to its owner and remove key
+            outdict[ownerof[key]] = np.append(outdict[ownerof[key]],outdict[key])
+            outdict.pop(key)
+    return outdict,ownerof
+
+def shear_periodic(label,axis,cell_shear,shear_axis):
+    # just return the tuple of the one axis
+    # 1. get faces
+    dim = label.ndim
+    size = label.shape[axis]
+    select1 = [slice(None)]*dim
+    select2 = [slice(None)]*dim
+    select1[axis] = 0
+    select2[axis] = size-1
+    lf1 = label[tuple(select1)]
+    lf2 = label[tuple(select2)]
+    # 2. now cell shear
+    axes = list(range(dim))
+    axes.remove(axis)
+    aisa = axes.index(shear_axis)
+    lf2 = np.roll(lf2,cell_shear,axis=aisa)
+    return connect_faces(lf1,lf2)
+
+def periodic(label,axis):
+    dim = label.ndim
+    size = label.shape[axis]
+    select1 = [slice(None)]*dim
+    select2 = [slice(None)]*dim
+    select1[axis] = 0
+    select2[axis] = size-1
+    lf1 = label[tuple(select1)]
+    lf2 = label[tuple(select2)]
+    return connect_faces(lf1,lf2)
+
+def tigress_shear(label,cell_shear):
+    # open in Z
+    # periodic in Y, so axis = 1
+    connectset = set()
+    connectset = connectset.union(periodic(label,1))
+    # shear periodic in X, so axis = 0, shear_axis = 1
+    connectset = connectset.union(shear_periodic(label,0,cell_shear,1))
+    return connectset
+
+def tigress(label,cell_shear):
+    # open in Z
+    # periodic in Y, so axis = 1
+    connectset = set()
+    connectset = connectset.union(periodic(label,0))
+    connectset = connectset.union(periodic(label,1))
+    connectset = connectset.union(periodic(label,2))
+    return connectset
+
+def tigress_nob(label,cell_shear):
+    # open in Z
+    # periodic in Y, so axis = 1
+    connectset = set()
+    return connectset
+
+def connect_faces_simple(lf1,lf2):
+    # lf1 and lf2 are label faces
+    select = lf1*lf2 > 0
+    stack = np.zeros(list(lf1.shape)+[2])
+    stack[:,:,0] = lf1
+    stack[:,:,1] = lf2
+    pairs = stack[select]
+    return set([tuple(pair) for pair in pairs])
+
+def connect_faces_rank(lf1,lf2):
+
+    stack = np.zeros([2]+list(lf1.shape))
+    stack[0] = lf1
+    stack[1] = lf2
+    label,things = sn.label(stack > 0,structure=default_struct)
+    if things == 0:
+        return set()
+    slc = sn.labeled_comprehension(stack,label,range(1,things+1),
+                                   lambda a: list(set(a)),
+                                   list,
+                                   None,
+                                   pass_positions=False)
+    tuples = []
+    for region in slc:
+        if len(region) == 0:
+            continue
+        owner = np.min(region)
+        for cell in region:
+            if cell != owner:
+                tuples += [(owner,cell)]
+    return set(tuples)
+
+connect_faces = connect_faces_rank
 ##########################################################################################
 ## plots
 ##########################################################################################
@@ -232,13 +403,21 @@ def ave(a,n):
 ##########################################################################################
 ## plots
 ##########################################################################################
-def colors(n,x2=0.88):
+def mgcolors(name='default'):
+    mgcolors=['#3369E8','#009925','#FBBC05','#EA4335',]
+    if (name == 'default'):
+        return mgcolors
+    else:
+        return mgcolors
+
+def colors(n,cmap='nipy_spectral',x1=0.0,x2=0.88,beta=0.99):
     colors = ['k','darkviolet',  'b', 'royalblue', 'c', 'g', 'springgreen', 'gold', 'y',  
           'salmon','pink', 'r','darkred', 'm', 'violet',]
-    cmap = plt.cm.nipy_spectral  # define the colormap
+    clmap = plt.cm.nipy_spectral  # define the colormap
+    clmap = plt.get_cmap(cmap)
     #cmap = plt.cm.terrain  # define the colormap
     #cmap = plt.cm.viridis  # define the colormap
-    colors=[tuple(np.array(cmap(i/max(1,n-1)*x2))/1.01) for i in range(n)]
+    colors=[tuple(np.array(clmap(x1+i/max(1,n-1)*(x2-x1)))*beta) for i in range(n)]
     return colors
 def figure(nrows=1,ncols=1,figsize=(6.4,4.8),dpi=120,sharex=True,squeeze=False,\
     constrained_layout=False,top=0.94, wspace=0.02, hspace=0.0):
@@ -255,17 +434,23 @@ def figure(nrows=1,ncols=1,figsize=(6.4,4.8),dpi=120,sharex=True,squeeze=False,\
             ax.yaxis.tick_right()
     return fig,ax
 def subplots(nrows=2,ncols=2,figsize=(7.2,5.0),dpi=120,sharex=True,squeeze=False,\
-    constrained_layout=False,top=0.94, wspace=0.02, hspace=0.0,raw=False):
+    constrained_layout=False,top=0.94, bottom=0.1,left=0.125, right=0.9, 
+    wspace=0.02, hspace=0.0,raw=False,**kwargs):
     fig, axes = plt.subplots(nrows,ncols,figsize=figsize,dpi=dpi,sharex=sharex,\
-                         constrained_layout=constrained_layout,squeeze=squeeze)
-    fig.subplots_adjust(top=top, wspace=wspace, hspace=hspace)
+                         constrained_layout=constrained_layout,squeeze=squeeze,**kwargs)
+    fig.subplots_adjust(top=top,bottom=bottom, left=left, right=right, wspace=wspace, hspace=hspace)
     if (raw): return fig,axes
     #fig.subplots_adjust(left=0.125, bottom=0.1, right=0.9, top=0.9, wspace=0.2, hspace=0.2)
-    for ax in axes.flat:
-        ax.grid(linestyle='--')
-        ax.tick_params(top=True,right=True,which='both',direction="in")
     if(ncols>1):
         for ax in axes[:,-1]:
             ax.yaxis.set_label_position("right")
             ax.yaxis.tick_right()
+    for ax in axes.flat:
+        ax.grid(linestyle='--')
+        ax.tick_params(bottom=True,top=True,left=True,right=True,which='both',direction="in")
     return fig,axes
+def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
+    new_cmap = clr.LinearSegmentedColormap.from_list(
+        'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=minval, b=maxval),
+        cmap(np.linspace(minval, maxval, n)))
+    return new_cmap
