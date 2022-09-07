@@ -4,6 +4,7 @@ import numpy as np
 import struct
 import h5py
 import warnings
+from packaging.version import parse as version_parse
 
 from matplotlib import pyplot as plt
 from matplotlib import cm
@@ -239,7 +240,7 @@ def _recursively_load_dict_contents_from_group(h5file, path):
 
 
 class AthenaBinaries:
-    def __init__(self,binarypath,path='',label='',name='Base',nlim=10001,update=True,**kwargs):
+    def __init__(self,binarypath,path='',label='',name='Base',nlim=10001,update=True,version='0.1',**kwargs):
         self.nlim=nlim
         self.alist=[]
         self.abins=[None]*self.nlim
@@ -249,6 +250,7 @@ class AthenaBinaries:
         self.name=name
         self.evo={}
         self.update=update
+        self.version=version
         return
 
     def read(self,ilist,info=False,redo=False):
@@ -256,7 +258,7 @@ class AthenaBinaries:
             if(redo or i not in self.alist):
                 if(info): print("read:",i)
                 if self.abins[i] is None:
-                    self.abins[i]=AthenaBinary(path=self.path,label=self.label,num=i)
+                    self.abins[i]=AthenaBinary(path=self.path,label=self.label,num=i,version=self.version)
                 self.abins[i].load_binary(self.binarypath+f"{i:05d}.bin")
             self.alist=sorted(list(set(self.alist + list([i]))))
         return
@@ -277,7 +279,7 @@ class AthenaBinaries:
             if(redo or i not in self.alist):
                 if(info): print("load hdf5:",i)
                 if self.abins[i] is None:
-                    self.abins[i]=AthenaBinary(path=self.path,label=self.label,num=i)
+                    self.abins[i]=AthenaBinary(path=self.path,label=self.label,num=i,version=self.version)
                 self.abins[i].load_hdf5(hdf5path+f"{self.name}.{i:05d}.hdf5")
             self.alist=sorted(list(set(self.alist + list([i]))))
         return
@@ -460,10 +462,11 @@ class AthenaBinaries:
         return
 
 class AthenaBinary:
-    def __init__(self,path='',label='',num=0):
+    def __init__(self,path='',label='',num=0,version='0.1'):
         self.path=path
         self.label=label
         self.num=num
+        self.version=version
         self._header={}
         self.raw={}
         self.coord={}
@@ -503,6 +506,12 @@ class AthenaBinary:
         self.nx3_mb=self.raw['nx3_mb']
         self.mb_logical=np.asarray(self.raw['mb_logical'])
         self.mb_geometry=np.asarray(self.raw['mb_geometry'])
+        if(version_parse(self.version)>version_parse('0.1')):
+            nx_mb = [self.nx1_mb,self.nx2_mb,self.nx3_mb]
+            dxs = [(self.mb_geometry[:,2*i+1]-self.mb_geometry[:,2*i])/nx_mb[i] for i in range(3)]
+            for i in range(3):
+                self.mb_geometry[:,i]=self.mb_geometry[:,i]+0.5*dxs[i]
+                self.mb_geometry[:,i+3]=dxs[i]
         self.mb_data=self.raw['mb_data']
         for var in self.raw['var_names']:
             self.mb_data[var]=np.asarray(self.mb_data[var])
