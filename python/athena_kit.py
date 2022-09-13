@@ -188,6 +188,7 @@ ran['g']=Acceleration(ran['r'],m_bh,m_star,r_star,m_dm,r_dm,unit.grav_constant)
 ran['t_ff']=np.pi/4.0*np.sqrt(2.*ran['r']/-ran['g'])
 ran['v_ff']=np.sqrt(2.*ran['r']*-ran['g'])
 ran['v_kep']=np.sqrt(ran['r']*-ran['g'])
+ran['Omega']=ran['v_kep']/ran['r']
 ran['am_kep']=np.sqrt(ran['r']**3*-ran['g'])
 ran['potential']=ran['r']*-ran['g']
 ran['r_B']=unit.grav_constant*m_bh/(gamma*ran['temp'])
