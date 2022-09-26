@@ -504,13 +504,14 @@ class AthenaBinary:
         self.nx1_mb=self.raw['nx1_mb']
         self.nx2_mb=self.raw['nx2_mb']
         self.nx3_mb=self.raw['nx3_mb']
-        self.mb_logical=np.asarray(self.raw['mb_logical'])
-        self.mb_geometry=np.asarray(self.raw['mb_geometry'])
+        self.mb_logical=np.array(self.raw['mb_logical'])
+        self.mb_geometry=np.array(self.raw['mb_geometry'])
         if(version_parse(self.version)>version_parse('0.1')):
             nx_mb = [self.nx1_mb,self.nx2_mb,self.nx3_mb]
             dxs = [(self.mb_geometry[:,2*i+1]-self.mb_geometry[:,2*i])/nx_mb[i] for i in range(3)]
+            x0s = [self.mb_geometry[:,2*i]+0.5*dxs[i] for i in range(3)]
             for i in range(3):
-                self.mb_geometry[:,i]=self.mb_geometry[:,i]+0.5*dxs[i]
+                self.mb_geometry[:,i]=x0s[i]
                 self.mb_geometry[:,i+3]=dxs[i]
         self.mb_data=self.raw['mb_data']
         for var in self.raw['var_names']:

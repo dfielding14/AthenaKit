@@ -182,7 +182,7 @@ def SolveDens(N=2048,logh=0.002):
     return rss
 
 # solve
-ran=SolveDens(N=8000)
+ran=SolveDens(N=12000)
 ran['mass']=TotMass(ran['r'],m_bh,m_star,r_star,m_dm,r_dm)
 ran['g']=Acceleration(ran['r'],m_bh,m_star,r_star,m_dm,r_dm,unit.grav_constant)
 ran['t_ff']=np.pi/4.0*np.sqrt(2.*ran['r']/-ran['g'])
