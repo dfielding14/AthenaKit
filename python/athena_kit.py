@@ -488,10 +488,10 @@ def colors(n,cmap='nipy_spectral',x1=0.0,x2=0.88,beta=0.99):
     colors=[tuple(np.array(clmap(x1+i/max(1,n-1)*(x2-x1)))*beta) for i in range(n)]
     return colors
 def figure(nrows=1,ncols=1,figsize=(6.4,4.8),dpi=120,sharex=True,squeeze=False,\
-    constrained_layout=False,top=0.94, wspace=0.02, hspace=0.0):
+    constrained_layout=False,top=0.94, bottom=0.1,left=0.125, right=0.9, wspace=0.02, hspace=0.0):
     fig, axes = plt.subplots(nrows,ncols,figsize=figsize,dpi=dpi,sharex=sharex,\
                          constrained_layout=constrained_layout,squeeze=squeeze)
-    fig.subplots_adjust(top=top, wspace=wspace, hspace=hspace)
+    fig.subplots_adjust(top=top,bottom=bottom, left=left, right=right, wspace=wspace, hspace=hspace)
     #fig.subplots_adjust(left=0.125, bottom=0.1, right=0.9, top=0.9, wspace=0.2, hspace=0.2)
     for ax in axes.flat:
         ax.grid(linestyle='--')
