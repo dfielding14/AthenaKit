@@ -978,25 +978,26 @@ class AthenaBinary:
                 self.dist2d[varname]['loc2'] = dat[2]
         return 
 
-    def plot_snapshot(self,var='dens',varname='',zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
+    def plot_snapshot(self,var='dens',data=None,varname='',zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
                       title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
                       norm=LogNorm(1e-1,1e1),save=False,figdir='../figure/Simu_',figpath=None,\
                       savepath='',savelabel='',figlabel='',dpi=200,vel=None,stream=None,circle=True,\
                       fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,stream_linewidth=None,\
-                      stream_arrowsize=None,**kwargs):
+                      stream_arrowsize=None,vel_method='ave',**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         bins=int(np.min([self.Nx1,self.Nx2,self.Nx3])) if not bins else bins
-        print('varname: ',varname)
         varname = var+f'_{zoom}' if not varname else varname
-        print('new varname: ',varname)
         if (not xyz):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
                    self.x2min/2**zoom,self.x2max/2**zoom,
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
-        if varname in self.slice.keys():
+        if (data is not None):
+            slc=data['dat']*unit
+            xyz = list(data['xyz'])
+        elif varname in self.slice.keys():
             slc = self.slice[varname]['dat']*unit
-            xyz = self.slice[varname]['xyz']
+            xyz = list(self.slice[varname]['xyz'])
         else:
             slc = self.get_slice(var,zoom=zoom,level=level,xyz=xyz)[0]*unit
         x0,x1,y0,y1,z0,z1 = xyz[0],xyz[1],xyz[2],xyz[3],xyz[4],xyz[5]
@@ -1015,10 +1016,14 @@ class AthenaBinary:
             #x = self.get_slice('x',zoom=zoom,level=vel,xyz=xyz)[0]
             #y = self.get_slice('y',zoom=zoom,level=vel,xyz=xyz)[0]
             fac=max(int(2**(level-vel)),1)
-            n0,n1=int(u.shape[0]/fac),int(u.shape[1]/fac)
-            u=np.average(u.reshape(n0,fac,n1,fac),axis=(1,3))
-            n0,n1=int(v.shape[0]/fac),int(v.shape[1]/fac)
-            v=np.average(v.reshape(n0,fac,n1,fac),axis=(1,3))
+            if (vel_method=='ave'):
+                n0,n1=int(u.shape[0]/fac),int(u.shape[1]/fac)
+                u=np.average(u.reshape(n0,fac,n1,fac),axis=(1,3))
+                n0,n1=int(v.shape[0]/fac),int(v.shape[1]/fac)
+                v=np.average(v.reshape(n0,fac,n1,fac),axis=(1,3))
+            else:
+                u=u[int(fac/2)::fac,int(fac/2)::fac]
+                v=v[int(fac/2)::fac,int(fac/2)::fac]
             ax.quiver(x*xyunit, y*xyunit, u, v)
         if (stream is not None):
             x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz)[:3]
