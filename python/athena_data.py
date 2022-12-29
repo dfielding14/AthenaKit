@@ -18,7 +18,7 @@ except:
     warnings.warn("No module named 'celluloid'")
 
 # from bin_convert.py
-def read_binary(filename):
+def read_binary(filename,mblist=None):
     """
     Reads a bin file from filename to dictionary.
 
@@ -120,17 +120,35 @@ def read_binary(filename):
     for var in var_list:
         mb_data[var] = []
 
-    while fp.tell() < filesize:
-        mb_count += 1
+    if (mblist is not None):
+        mb_id = 0
+        while fp.tell() < filesize:
+            mb_id += 1
+            if (mb_id-1 in mblist):
+                mb_count += 1
+                mb_logical.append(np.array(struct.unpack('@4i', fp.read(16))))
+                mb_geometry.append(np.array(struct.unpack('=6'+locfmt,
+                                            fp.read(6*locsizebytes))))
 
-        mb_logical.append(np.array(struct.unpack('@4i', fp.read(16))))
-        mb_geometry.append(np.array(struct.unpack('=6'+locfmt,
-                                    fp.read(6*locsizebytes))))
+                data = np.array(struct.unpack(mb_fstr, fp.read(mb_varsize)))
+                data = data.reshape(nvars, nx3, nx2, nx1)
+                for vari, var in enumerate(var_list):
+                    mb_data[var].append(data[vari])
+            else:
+                fp.seek(16+6*locsizebytes+mb_varsize,1)
+                pass
+    else:
+        while fp.tell() < filesize:
+            mb_count += 1
 
-        data = np.array(struct.unpack(mb_fstr, fp.read(mb_varsize)))
-        data = data.reshape(nvars, nx3, nx2, nx1)
-        for vari, var in enumerate(var_list):
-            mb_data[var].append(data[vari])
+            mb_logical.append(np.array(struct.unpack('@4i', fp.read(16))))
+            mb_geometry.append(np.array(struct.unpack('=6'+locfmt,
+                                        fp.read(6*locsizebytes))))
+
+            data = np.array(struct.unpack(mb_fstr, fp.read(mb_varsize)))
+            data = data.reshape(nvars, nx3, nx2, nx1)
+            for vari, var in enumerate(var_list):
+                mb_data[var].append(data[vari])
 
     fp.close()
 
@@ -253,13 +271,13 @@ class AthenaBinaries:
         self.version=version
         return
 
-    def read(self,ilist,info=False,redo=False):
+    def read(self,ilist,info=False,redo=False,**kwargs):
         for i in ilist:
             if(redo or i not in self.alist):
                 if(info): print("read:",i)
                 if self.abins[i] is None:
                     self.abins[i]=AthenaBinary(path=self.path,label=self.label,num=i,version=self.version)
-                self.abins[i].load_binary(self.binarypath+f"{i:05d}.bin")
+                self.abins[i].load_binary(self.binarypath+f"{i:05d}.bin",**kwargs)
             self.alist=sorted(list(set(self.alist + list([i]))))
         return
 
@@ -479,8 +497,8 @@ class AthenaBinary:
         self.spectra={}
         return
 
-    def load_binary(self,filename):
-        self._init_from_raw(read_binary(filename))
+    def load_binary(self,filename,**kwargs):
+        self._init_from_raw(read_binary(filename,**kwargs))
 
     def _init_from_raw(self,raw):
         self.raw=raw
