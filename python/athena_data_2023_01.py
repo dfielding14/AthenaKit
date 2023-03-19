@@ -22,9 +22,6 @@ def read_binary(filename,mblist=None):
     """
     Reads a bin file from filename to dictionary.
 
-    Originally written by Lev Arzamasskiy (leva@ias.edu) on 11/15/2021
-    Updated to support mesh refinement by George Wong (gnwong@ias.edu) on 01/27/2022
-
     args:
       filename - string
           filename of bin file to read
@@ -102,7 +99,6 @@ def read_binary(filename,mblist=None):
     nx1 = int(get_from_header(header, '<meshblock>', 'nx1'))
     nx2 = int(get_from_header(header, '<meshblock>', 'nx2'))
     nx3 = int(get_from_header(header, '<meshblock>', 'nx3'))
-    nghost = int(get_from_header(header, '<mesh>', 'nghost'))
 
     x1min = float(get_from_header(header, '<mesh>', 'x1min'))
     x1max = float(get_from_header(header, '<mesh>', 'x1max'))
@@ -113,10 +109,10 @@ def read_binary(filename,mblist=None):
 
     # load data from each meshblock
     n_vars = len(var_list)
+    mb_fstr = f"={nx1*nx2*nx3*n_vars}" + varfmt
     mb_varsize = varsizebytes*nx1*nx2*nx3*n_vars
     mb_count = 0
 
-    mb_index = []
     mb_logical = []
     mb_geometry = []
 
@@ -129,42 +125,30 @@ def read_binary(filename,mblist=None):
         while fp.tell() < filesize:
             mb_id += 1
             if (mb_id-1 in mblist):
-                mb_index.append(np.array(struct.unpack('@6i', fp.read(24))) - nghost)
-                nx1_out = (mb_index[mb_count][1] - mb_index[mb_count][0])+1
-                nx2_out = (mb_index[mb_count][3] - mb_index[mb_count][2])+1
-                nx3_out = (mb_index[mb_count][5] - mb_index[mb_count][4])+1
-
+                mb_count += 1
                 mb_logical.append(np.array(struct.unpack('@4i', fp.read(16))))
                 mb_geometry.append(np.array(struct.unpack('=6'+locfmt,
                                             fp.read(6*locsizebytes))))
 
-                data = np.array(struct.unpack(f"={nx1_out*nx2_out*nx3_out*n_vars}" + varfmt,
-                                              fp.read(varsizebytes *
-                                                      nx1_out*nx2_out*nx3_out*n_vars)))
-                data = data.reshape(nvars, nx3_out, nx2_out, nx1_out)
+                data = np.array(struct.unpack(mb_fstr, fp.read(mb_varsize)))
+                data = data.reshape(nvars, nx3, nx2, nx1)
                 for vari, var in enumerate(var_list):
                     mb_data[var].append(data[vari])
-                mb_count += 1
             else:
-                fp.seek(24+16+6*locsizebytes+varsizebytes*nx1_out*nx2_out*nx3_out*n_vars,1)
+                fp.seek(16+6*locsizebytes+mb_varsize,1)
                 pass
     else:
         while fp.tell() < filesize:
-            mb_index.append(np.array(struct.unpack('@6i', fp.read(24))) - nghost)
-            nx1_out = (mb_index[mb_count][1] - mb_index[mb_count][0])+1
-            nx2_out = (mb_index[mb_count][3] - mb_index[mb_count][2])+1
-            nx3_out = (mb_index[mb_count][5] - mb_index[mb_count][4])+1
+            mb_count += 1
+
             mb_logical.append(np.array(struct.unpack('@4i', fp.read(16))))
             mb_geometry.append(np.array(struct.unpack('=6'+locfmt,
                                         fp.read(6*locsizebytes))))
 
-            data = np.array(struct.unpack(f"={nx1_out*nx2_out*nx3_out*n_vars}" + varfmt,
-                                            fp.read(varsizebytes *
-                                                    nx1_out*nx2_out*nx3_out*n_vars)))
-            data = data.reshape(nvars, nx3_out, nx2_out, nx1_out)
+            data = np.array(struct.unpack(mb_fstr, fp.read(mb_varsize)))
+            data = data.reshape(nvars, nx3, nx2, nx1)
             for vari, var in enumerate(var_list):
                 mb_data[var].append(data[vari])
-            mb_count += 1
 
     fp.close()
 
