@@ -18,6 +18,7 @@ except:
     warnings.warn("No module named 'celluloid'")
 
 # from bin_convert.py
+# convert bin --> Python dictionary
 def read_binary(filename,mblist=None):
     """
     Reads a bin file from filename to dictionary.
@@ -181,6 +182,103 @@ def read_binary(filename,mblist=None):
 
     return filedata
 
+# convert Python dictionary --> athdf(xdmf) files
+def write_athdf(filename, fdata, varsize_bytes=4, locsize_bytes=8):
+    """
+    Writes an athdf (hdf5) file from a loaded python filedata object.
+
+    args:
+      filename      - string
+          filename for output athdf (hdf5) file
+      fdata         - dict
+          dictionary of fluid file data, e.g., as loaded from read_binary(...)
+      varsize_bytes - int (default=4, options=4,8)
+          number of bytes to use for output variable data
+      locsize_bytes - int (default=8, options=4,8)
+          number of bytes to use for output location data
+    """
+
+    if varsize_bytes not in [4, 8]:
+        raise ValueError(f'varsizebytes must be 4 or 8, not {varsize_bytes}')
+    if locsize_bytes not in [4, 8]:
+        raise ValueError(f'locsizebytes must be 4 or 8, not {locsize_bytes}')
+    locfmt = '<f4' if locsize_bytes == 4 else '<f8'
+    varfmt = '<f4' if varsize_bytes == 4 else '<f8'
+
+    nmb = fdata['n_mbs']
+    nx1 = fdata['nx1_mb']
+    nx2 = fdata['nx2_mb']
+    nx3 = fdata['nx3_mb']
+
+    # keep variable order but separate out magnetic field
+    vars_without_b = [v for v in fdata['var_names'] if 'bcc' not in v]
+    vars_only_b = [v for v in fdata['var_names'] if v not in vars_without_b]
+
+    if len(vars_only_b) > 0:
+        B = np.zeros((3, nmb, nx3, nx2, nx1))
+    Levels = np.zeros(nmb)
+    LogicalLocations = np.zeros((nmb, 3))
+    uov = np.zeros((len(vars_without_b), nmb, nx3, nx2, nx1))
+    x1f = np.zeros((nmb, nx1+1))
+    x1v = np.zeros((nmb, nx1))
+    x2f = np.zeros((nmb, nx2+1))
+    x2v = np.zeros((nmb, nx2))
+    x3f = np.zeros((nmb, nx3+1))
+    x3v = np.zeros((nmb, nx3))
+
+    for ivar, var in enumerate(vars_without_b):
+        uov[ivar] = fdata['mb_data'][var]
+    for ibvar, bvar in enumerate(vars_only_b):
+        B[ibvar] = fdata['mb_data'][bvar]
+
+    for mb in range(nmb):
+        logical = fdata['mb_logical'][mb]
+        LogicalLocations[mb] = logical[:3]
+        Levels[mb] = logical[-1]
+        geometry = fdata['mb_geometry'][mb]
+        x1f[mb] = np.linspace(geometry[0], geometry[1], nx1+1)
+        x1v[mb] = 0.5*(x1f[mb][1:]+x1f[mb][:-1])
+        x2f[mb] = np.linspace(geometry[2], geometry[3], nx2+1)
+        x2v[mb] = 0.5*(x2f[mb][1:]+x2f[mb][:-1])
+        x3f[mb] = np.linspace(geometry[4], geometry[5], nx3+1)
+        x3v[mb] = 0.5*(x3f[mb][1:]+x3f[mb][:-1])
+
+    # Set Attributes
+    utf8_type = h5py.string_dtype('utf-8', 30)
+    dataset_names = [np.array('uov'.encode("utf-8"), dtype=utf8_type)]
+    dataset_nvars = [len(vars_without_b)]
+    if len(vars_only_b) > 0:
+        dataset_names.append(np.array('B'.encode("utf-8"), dtype=utf8_type))
+        dataset_nvars.append(len(vars_only_b))
+    hfp = h5py.File(filename, 'w')
+    hfp.attrs['Time'] = fdata['time']
+    hfp.attrs['NumCycles'] = fdata['cycle']
+    hfp.attrs['Coordinates'] = np.array('cartesian'.encode("utf-8"), dtype=utf8_type)
+    hfp.attrs['NumMeshBlocks'] = fdata['n_mbs']
+    hfp.attrs['MaxLevel'] = int(max(Levels))
+    hfp.attrs['MeshBlockSize'] = [fdata['nx1_mb'], fdata['nx2_mb'], fdata['nx3_mb']]
+    hfp.attrs['RootGridSize'] = [fdata['Nx1'], fdata['Nx2'], fdata['Nx3']]
+    hfp.attrs['RootGridX1'] = [fdata['x1min'], fdata['x1max'], 1.0]
+    hfp.attrs['RootGridX2'] = [fdata['x2min'], fdata['x2max'], 1.0]
+    hfp.attrs['RootGridX3'] = [fdata['x3min'], fdata['x3max'], 1.0]
+    hfp.attrs['DatasetNames'] = dataset_names
+    hfp.attrs['NumVariables'] = dataset_nvars
+    hfp.attrs['VariableNames'] = [np.array(i.encode("utf-8"), dtype=utf8_type)
+                                  for i in fdata['var_names']]
+    hfp.attrs['Header'] = fdata['header']
+    # Create Datasets
+    if len(vars_only_b) > 0:
+        hfp.create_dataset('B', data=B, dtype=varfmt)
+    hfp.create_dataset('Levels', data=Levels, dtype='>i4')
+    hfp.create_dataset('LogicalLocations', data=LogicalLocations, dtype='>i8')
+    hfp.create_dataset('uov', data=uov, dtype=varfmt)
+    hfp.create_dataset('x1f', data=x1f, dtype=locfmt)
+    hfp.create_dataset('x1v', data=x1v, dtype=locfmt)
+    hfp.create_dataset('x2f', data=x2f, dtype=locfmt)
+    hfp.create_dataset('x2v', data=x2v, dtype=locfmt)
+    hfp.create_dataset('x3f', data=x3f, dtype=locfmt)
+    hfp.create_dataset('x3v', data=x3v, dtype=locfmt)
+    hfp.close()
 
 def save_dict_to_hdf5(dic, filename):
     """
