@@ -1,5 +1,6 @@
 from time import sleep
 import numpy as np
+import re
 from matplotlib import pyplot as plt
 from matplotlib import colors as clr
 from matplotlib import cm
@@ -201,6 +202,31 @@ def rho_T_t_cool(cooling_rho=np.logspace(-4,4,400),cooling_temp=np.logspace(0,8,
     cooling_rho,cooling_temp=np.meshgrid(cooling_rho,cooling_temp)
     cooling_tcool=k_boltzmann_cgs*cooling_temp/cooling_rho/CoolFnShure(cooling_temp)/(gamma-1)/myr_cgs
     return cooling_rho,cooling_temp,cooling_tcool
+
+##########################################################################################
+## Read files
+##########################################################################################
+
+# Read .hst files and return dict of 1D arrays.
+def hst(filename):
+    data = {}
+    with open(filename, 'r') as data_file:
+        line = data_file.readline()
+        if (line != '# Athena++ history data\n'):
+            raise TypeError(f"Bad file format \"{line.decode('utf-8')}\" ")
+        header = data_file.readline()
+        data_names = re.findall(r'\[\d+\]=(\S+)', header)
+        if len(data_names) == 0:
+            raise RuntimeError('Could not parse header')
+    # Read data
+    arr=np.loadtxt(filename).T
+    # Make time monotonic increasing
+    mono=np.minimum.accumulate(arr[0][::-1])[::-1]
+    locs=np.append(mono[:-1]<mono[1:],True)
+    # Make dictionary of results
+    for i,name in enumerate(data_names):
+        data[name]=arr[i][locs]
+    return data
 
 ##########################################################################################
 ## SNR
