@@ -548,3 +548,12 @@ def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
         'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=minval, b=maxval),
         cmap(np.linspace(minval, maxval, n)))
     return new_cmap
+
+# generate a rgb image showing different species
+def get_rgb(x,c=[[1,0,0],[0.98,0.6,0.02],[0.0,0.6,0.1],[0.05,0.1,1.0]]):
+    u,v,w=0.,0.,0.
+    for i in range(len(x)):
+        u=u+c[i][0]*x[i]
+        v=v+c[i][1]*x[i]
+        w=w+c[i][2]*x[i]
+    return np.array([u,v,w]).transpose([1,2,0])

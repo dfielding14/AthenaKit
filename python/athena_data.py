@@ -1124,14 +1124,14 @@ class AthenaBinary:
         return strm
 
 
-    def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
+    def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',unit=1.0,cmap='viridis',\
                    norm=LogNorm(1e-3,1e1),extent=None,save=False,savepath='',figdir='../figure/Simu_',\
                    figpath='',fig=None,ax=None,dpi=128,aspect='auto',**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         dat = self.dist2d[varname]
         extent = [dat['loc1'].min(),dat['loc1'].max(),dat['loc2'].min(),dat['loc2'].max()] if extent is None else extent
-        im = ax.imshow(dat['dat'].swapaxes(0,1)[::-1,:],extent=extent,norm=norm,cmap=cmap,aspect=aspect,**kwargs)
+        im = ax.imshow(dat['dat'].swapaxes(0,1)[::-1,:]*unit,extent=extent,norm=norm,cmap=cmap,aspect=aspect,**kwargs)
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="4%", pad=0.02)
         ax.set_xlabel(xlabel)
