@@ -759,7 +759,8 @@ class AthenaBinary:
     def get_data(self,var,level=0,xyz=[]):
         if (not xyz):
             xyz = [self.x1min,self.x1max,self.x2min,self.x2max,self.x3min,self.x3max]
-        root_level = self.mb_logical[:,-1].min()
+        #root_level = self.mb_logical[:,-1].min()
+        root_level = 0
         max_level = self.mb_logical[:,-1].max()
         logical_level = level+root_level
         nx1_fac = 2**level*self.Nx1/(self.x1max-self.x1min)
@@ -1125,7 +1126,7 @@ class AthenaBinary:
 
 
     def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',unit=1.0,cmap='viridis',\
-                   norm=LogNorm(1e-3,1e1),extent=None,save=False,savepath='',figdir='../figure/Simu_',\
+                   norm=LogNorm(1e-3,1e1),extent=None,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
                    figpath='',fig=None,ax=None,dpi=128,aspect='auto',**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
@@ -1137,7 +1138,7 @@ class AthenaBinary:
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
-        fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
+        if (colorbar): fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
         if (save):
             figpath=figdir+Path(self.path).parts[-1]+'/'+self.label+"/" if not figpath else figpath
             if not os.path.isdir(figpath):
