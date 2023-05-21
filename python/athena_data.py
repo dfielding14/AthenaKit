@@ -723,9 +723,7 @@ class AthenaBinary:
     def get_coord(self,level=0,xyz=[]):
         if (not xyz):
             xyz = [self.x1min,self.x1max,self.x2min,self.x2max,self.x3min,self.x3max]
-        root_level = self.mb_logical[:,-1].min()
-        max_level = self.mb_logical[:,-1].max()
-        logical_level = level+root_level
+        # level is physical level
         nx1_fac = 2**level*self.Nx1/(self.x1max-self.x1min)
         nx2_fac = 2**level*self.Nx2/(self.x2max-self.x2min)
         nx3_fac = 2**level*self.Nx3/(self.x3max-self.x3min)
@@ -759,10 +757,8 @@ class AthenaBinary:
     def get_data(self,var,level=0,xyz=[]):
         if (not xyz):
             xyz = [self.x1min,self.x1max,self.x2min,self.x2max,self.x3min,self.x3max]
-        #root_level = self.mb_logical[:,-1].min()
-        root_level = 0
-        max_level = self.mb_logical[:,-1].max()
-        logical_level = level+root_level
+        # block_level is physical level of mesh refinement
+        physical_level = level
         nx1_fac = 2**level*self.Nx1/(self.x1max-self.x1min)
         nx2_fac = 2**level*self.Nx2/(self.x2max-self.x2min)
         nx3_fac = 2**level*self.Nx3/(self.x3max-self.x3min)
@@ -780,8 +776,8 @@ class AthenaBinary:
             block_data = raw[nmb]
             
             # Prolongate coarse data and copy same-level data
-            if (block_level <= logical_level):
-                s = int(2**(logical_level - block_level))
+            if (block_level <= physical_level):
+                s = int(2**(physical_level - block_level))
                 # Calculate destination indices, without selection
                 il_d = block_loc[0] * self.nx1_mb * s if self.Nx1 > 1 else 0
                 jl_d = block_loc[1] * self.nx2_mb * s if self.Nx2 > 1 else 0
@@ -816,7 +812,7 @@ class AthenaBinary:
             # Restrict fine data, volume average
             else:
                 # Calculate scale
-                s = int(2 ** (block_level - logical_level))
+                s = int(2 ** (block_level - physical_level))
                 # Calculate destination indices, without selection
                 il_d = int(block_loc[0] * self.nx1_mb / s) if self.Nx1 > 1 else 0
                 jl_d = int(block_loc[1] * self.nx2_mb / s) if self.Nx2 > 1 else 0
