@@ -72,6 +72,9 @@ class Units:
         kev_erg=1.60218e-09
         gamma=5./3.
         return self.pressure_cgs/kev_erg/self.number_density_cgs**gamma
+    @property
+    def magnetic_field_cgs(self):
+        return np.sqrt(4.0*np.pi*self.density_cgs)*self.velocity_cgs
 
 mu=0.618
 unit=Units(lunit=kpc_cgs,munit=mu*atomic_mass_unit_cgs*kpc_cgs**3,mu=mu)

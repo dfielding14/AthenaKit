@@ -648,7 +648,7 @@ class AthenaBinary:
         elif (var in ['ones','mass','pres','entropy','momx','momy','momz','momtot','velr',\
             'momr','velin','velout','vtot2','vtot','vrot','ekin','etot','amx','amy','amz',\
             'amtot','mdot','mdotin','mdotout','momflx','momflxin','momflxout',\
-            'ekflx','ekflxin','ekflxout']):
+            'ekflx','ekflxin','ekflxout','bccr','btot2','btot','brot',]):
             if (var=='ones'):
                 return np.ones(self.mb_data['dens'].shape)
             if (var=='mass'):
@@ -711,6 +711,16 @@ class AthenaBinary:
                 return self.mb_data['dens']*.5*self.data('vtot2')*self.data('velin')
             elif (var=='ekflxout'):
                 return self.mb_data['dens']*.5*self.data('vtot2')*self.data('velout')
+            elif (var=='bccr'):
+                return (self.mb_data['bcc1']*self.coord['x']+\
+                        self.mb_data['bcc2']*self.coord['y']+\
+                        self.mb_data['bcc3']*self.coord['z'])/self.coord['r']
+            elif (var=='btot2'):
+                return self.data('bcc1')**2+self.data('bcc2')**2+self.data('bcc3')**2
+            elif (var=='btot'):
+                return np.sqrt(self.data('btot2'))
+            elif (var=='brot'):
+                return np.sqrt(self.data('btot2')-self.data('bccr')**2)
             else:
                 raise ValueError(f"No variable callled '{var}' ")
         # user vars
@@ -1122,12 +1132,14 @@ class AthenaBinary:
 
 
     def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',unit=1.0,cmap='viridis',\
-                   norm=LogNorm(1e-3,1e1),extent=None,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
+                   norm=LogNorm(1e-3,1e1),extent=None,density=False,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
                    figpath='',fig=None,ax=None,dpi=128,aspect='auto',**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         dat = self.dist2d[varname]
         extent = [dat['loc1'].min(),dat['loc1'].max(),dat['loc2'].min(),dat['loc2'].max()] if extent is None else extent
+        if (density):
+            unit *= (extent[1]-extent[0])*(extent[3]-extent[2])/((dat['loc1'].shape[0]-1)*(dat['loc2'].shape[0]-1))
         im = ax.imshow(dat['dat'].swapaxes(0,1)[::-1,:]*unit,extent=extent,norm=norm,cmap=cmap,aspect=aspect,**kwargs)
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="4%", pad=0.02)
