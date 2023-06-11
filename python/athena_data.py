@@ -1042,8 +1042,6 @@ class AthenaBinary:
         else:
             slc = self.get_slice(var,zoom=zoom,level=level,xyz=xyz)[0]*unit
         x0,x1,y0,y1,z0,z1 = xyz[0],xyz[1],xyz[2],xyz[3],xyz[4],xyz[5]
-        im=ax.imshow(slc[::-1,:],extent=(x0*xyunit,x1*xyunit,y0*xyunit,y1*xyunit),\
-            norm=norm,cmap=cmap,**kwargs)
         if (vel is not None):
             x,y,z = self.get_slice_coord(zoom=zoom,level=vel,xyz=list(xyz))[:3]
             if (f'{vecx}_{zoom}' in self.slice.keys()):
@@ -1086,7 +1084,8 @@ class AthenaBinary:
             #ax.streamplot(x[beg::step,beg::step], z[beg::step,beg::step], (u[0]/norm[0])[beg::step,beg::step], (v[0]/norm[0])[beg::step,beg::step])
             #print(x.shape,y.shape,u.shape,v.shape)
             ax.streamplot(x*xyunit, y*xyunit, u, v,color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
-
+        im=ax.imshow(slc[::-1,:],extent=(x0*xyunit,x1*xyunit,y0*xyunit,y1*xyunit),\
+            norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(slc.swapaxes(0,1)[::-1,:],extent=(x0,x1,y0,y1),norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(np.rot90(data),cmap='plasma',norm=LogNorm(0.9e-1,1.1e1),extent=extent)
         if(circle and self.header('problem','r_in')):
