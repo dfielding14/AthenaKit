@@ -1098,8 +1098,8 @@ class AthenaBinary:
                       title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
                       norm=LogNorm(1e-1,1e1),save=False,figdir='../figure/Simu_',figpath=None,\
                       savepath='',savelabel='',figlabel='',dpi=200,vel=None,stream=None,circle=True,\
-                      fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,stream_linewidth=None,\
-                      stream_arrowsize=None,vel_method='ave',**kwargs):
+                      fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,stream_color='k',stream_linewidth=None,\
+                      stream_arrowsize=None,vecx='velx',vecy='vely',vel_method='ave',**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         bins=int(np.min([self.Nx1,self.Nx2,self.Nx3])) if not bins else bins
@@ -1117,18 +1117,16 @@ class AthenaBinary:
         else:
             slc = self.get_slice(var,zoom=zoom,level=level,xyz=xyz)[0]*unit
         x0,x1,y0,y1,z0,z1 = xyz[0],xyz[1],xyz[2],xyz[3],xyz[4],xyz[5]
-        im=ax.imshow(slc[::-1,:],extent=(x0*xyunit,x1*xyunit,y0*xyunit,y1*xyunit),\
-            norm=norm,cmap=cmap,**kwargs)
         if (vel is not None):
             x,y,z = self.get_slice_coord(zoom=zoom,level=vel,xyz=list(xyz))[:3]
-            if (f'velx_{zoom}' in self.slice.keys()):
-                u = self.slice[f'velx_{zoom}']['dat']
+            if (f'{vecx}_{zoom}' in self.slice.keys()):
+                u = self.slice[f'{vecx}_{zoom}']['dat']
             else:
-                u = self.get_slice('velx',zoom=zoom,level=level,xyz=list(xyz))[0]
-            if (f'vely_{zoom}' in self.slice.keys()):
-                v = self.slice[f'vely_{zoom}']['dat']
+                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz))[0]
+            if (f'{vecy}_{zoom}' in self.slice.keys()):
+                v = self.slice[f'{vecy}_{zoom}']['dat']
             else:
-                v = self.get_slice('vely',zoom=zoom,level=level,xyz=list(xyz))[0]
+                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz))[0]
             #x = self.get_slice('x',zoom=zoom,level=vel,xyz=xyz)[0]
             #y = self.get_slice('y',zoom=zoom,level=vel,xyz=xyz)[0]
             fac=max(int(2**(level-vel)),1)
@@ -1145,14 +1143,14 @@ class AthenaBinary:
             x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz)[:3]
             #x = self.get_slice('x',zoom=zoom,level=stream,xyz=xyz)[0]
             #y = self.get_slice('y',zoom=zoom,level=stream,xyz=xyz)[0]
-            if (f'velx_{zoom}' in self.slice.keys()):
-                u = self.slice[f'velx_{zoom}']['dat']
+            if (f'{vecx}_{zoom}' in self.slice.keys()):
+                u = self.slice[f'{vecx}_{zoom}']['dat']
             else:
-                u = self.get_slice('velx',zoom=zoom,level=level,xyz=list(xyz))[0]
-            if (f'vely_{zoom}' in self.slice.keys()):
-                v = self.slice[f'vely_{zoom}']['dat']
+                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz))[0]
+            if (f'{vecy}_{zoom}' in self.slice.keys()):
+                v = self.slice[f'{vecy}_{zoom}']['dat']
             else:
-                v = self.get_slice('vely',zoom=zoom,level=level,xyz=list(xyz))[0]
+                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz))[0]
             #x,y=np.meshgrid(x,y)
             #z,x=np.meshgrid(z,x)
             #np.mgrid[-w:w:100j, -w:w:100j]
@@ -1160,8 +1158,9 @@ class AthenaBinary:
             #step=16
             #ax.streamplot(x[beg::step,beg::step], z[beg::step,beg::step], (u[0]/norm[0])[beg::step,beg::step], (v[0]/norm[0])[beg::step,beg::step])
             #print(x.shape,y.shape,u.shape,v.shape)
-            ax.streamplot(x*xyunit, y*xyunit, u, v,color='k',linewidth=stream_linewidth,arrowsize=stream_arrowsize)
-
+            ax.streamplot(x*xyunit, y*xyunit, u, v,color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
+        im=ax.imshow(slc[::-1,:],extent=(x0*xyunit,x1*xyunit,y0*xyunit,y1*xyunit),\
+            norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(slc.swapaxes(0,1)[::-1,:],extent=(x0,x1,y0,y1),norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(np.rot90(data),cmap='plasma',norm=LogNorm(0.9e-1,1.1e1),extent=extent)
         if(circle and self.header('problem','r_in')):
@@ -1183,18 +1182,18 @@ class AthenaBinary:
             return fig,im
         return fig
     def streamplot(self,zoom=0,level=0,stream=0,xyz=[],unit=1.0,bins=None,\
-                      fig=None,ax=None,xyunit=1.0,**kwargs):
+                      fig=None,ax=None,vecx='velx',vecy='vely',xyunit=1.0,**kwargs):
         x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz)[:3]
         #x = self.get_slice('x',zoom=zoom,level=stream,xyz=xyz)[0]
         #y = self.get_slice('y',zoom=zoom,level=stream,xyz=xyz)[0]
-        if (f'velx_{zoom}' in self.slice.keys()):
-            u = self.slice[f'velx_{zoom}']['dat']
+        if (f'{vecx}_{zoom}' in self.slice.keys()):
+            u = self.slice[f'{vecx}_{zoom}']['dat']
         else:
-            u = self.get_slice('velx',zoom=zoom,level=level,xyz=list(xyz))[0]
-        if (f'vely_{zoom}' in self.slice.keys()):
-            v = self.slice[f'vely_{zoom}']['dat']
+            u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz))[0]
+        if (f'{vecy}_{zoom}' in self.slice.keys()):
+            v = self.slice[f'{vecy}_{zoom}']['dat']
         else:
-            v = self.get_slice('vely',zoom=zoom,level=level,xyz=list(xyz))[0]
+            v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz))[0]
         #x,y=np.meshgrid(x,y)
         #z,x=np.meshgrid(z,x)
         #np.mgrid[-w:w:100j, -w:w:100j]
@@ -1206,20 +1205,22 @@ class AthenaBinary:
         return strm
 
 
-    def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
-                   norm=LogNorm(1e-3,1e1),extent=None,save=False,savepath='',figdir='../figure/Simu_',\
+    def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',unit=1.0,cmap='viridis',\
+                   norm=LogNorm(1e-3,1e1),extent=None,density=False,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
                    figpath='',fig=None,ax=None,dpi=128,aspect='auto',**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         dat = self.dist2d[varname]
         extent = [dat['loc1'].min(),dat['loc1'].max(),dat['loc2'].min(),dat['loc2'].max()] if extent is None else extent
-        im = ax.imshow(dat['dat'].swapaxes(0,1)[::-1,:],extent=extent,norm=norm,cmap=cmap,aspect=aspect,**kwargs)
+        if (density):
+            unit /= (extent[1]-extent[0])*(extent[3]-extent[2])/((dat['loc1'].shape[0]-1)*(dat['loc2'].shape[0]-1))
+        im = ax.imshow(dat['dat'].swapaxes(0,1)[::-1,:]*unit,extent=extent,norm=norm,cmap=cmap,aspect=aspect,**kwargs)
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="4%", pad=0.02)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
-        fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
+        if (colorbar): fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
         if (save):
             figpath=figdir+Path(self.path).parts[-1]+'/'+self.label+"/" if not figpath else figpath
             if not os.path.isdir(figpath):
