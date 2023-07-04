@@ -231,30 +231,6 @@ def _recursively_save_dict_contents_to_group(h5file, path, dic):
             print('Error: ', key, ":", item)
             raise ValueError('Cannot save %s type' % type(item))
 
-def load_hdf5_to_dict(h5file, path):
-    """
-    Parameters
-    ----------
-    h5file:
-        h5py file to be loaded as a dictionary
-    path:
-        path within h5py file to load: '/' for the whole h5py file
-
-    Returns
-    -------
-    dic:
-        dictionary with hdf5 file group content
-    """
-    dic = {}
-    for key, item in h5file[path].items():
-        if isinstance(item, h5py.Dataset):
-            dic[key] = item[()]
-        elif isinstance(item, h5py.Group):
-            dic[key] = load_hdf5_to_dict(h5file, path + key + '/')
-        else:
-            raise ValueError('Cannot load %s type' % type(item))
-    return dic
-
 def load_dict_from_hdf5(filename, mode='r'):
 
     if mode not in ['r', 'r+', 'a+']:
@@ -504,7 +480,7 @@ class AthenaBinary:
         self._header={}
         self.raw={}
         self.coord={}
-        self.user_data={}
+        self.user_func={}
         self.hist={}
         self.rad={}
         self.slice={}
@@ -557,11 +533,11 @@ class AthenaBinary:
         self.rmin = None
         self.rmax = None
         return
-    
+
     def save_hdf5(self,filename):
         dic={}
         for k,v in self.__dict__.items():
-            if (k in ['raw', 'mb_data', 'coord', 'user_data']):
+            if (k in ['raw', 'mb_data', 'coord']):
                 continue
             dic[k]=v
         save_dict_to_hdf5(dic,filename)
@@ -600,7 +576,7 @@ class AthenaBinary:
             key, value = line.split('=')
             self._header[block][key.strip()] = value
 
-    def header(self, blockname, keyname, default=None):
+    def header(self, blockname, keyname, default=None, astype=str):
         blockname = blockname.strip()
         keyname = keyname.strip()
         if not blockname.startswith('<'):
@@ -609,7 +585,7 @@ class AthenaBinary:
             blockname += '>'
         if blockname in self._header.keys():
             if keyname in self._header[blockname].keys():
-                return self._header[blockname][keyname]
+                return astype(self._header[blockname][keyname])
         warnings.warn(f'Warning: no parameter called {blockname}/{keyname}, return default value: {default}')
         return default
 
@@ -627,16 +603,14 @@ class AthenaBinary:
         self.coord['vol']=self.coord['dx']*self.coord['dy']*self.coord['dz']
         return
     
-    def config_data(self,velr=False):
-        if (self.use_e):
-            self.mb_data['temp']=(self.gamma-1)*self.mb_data['eint']/self.mb_data['dens']
-        else:
-            self.mb_data['temp']=self.mb_data['eint']
-            self.mb_data['eint']=self.mb_data['temp']*self.mb_data['dens']/(self.gamma-1)
-        if (velr):
-            self.mb_data['velr']=(self.mb_data['velx']*self.coord['x']+\
-                                  self.mb_data['vely']*self.coord['y']+\
-                                  self.mb_data['velz']*self.coord['z'])/self.coord['r']
+    def config_data(self,**kwargs):
+        # assuming use_e=True
+        # assuming we have dens, velx, vely, velz, eint
+        # TODO(@mhguo): add support for arbitrary variables
+        return
+
+    def add_data(self,name,func):
+        self.user_func[name]=func
         return
 
     def data(self,var):
@@ -645,30 +619,32 @@ class AthenaBinary:
         #elif (var in ['dens','velx','vely','velz','velr','temp','eint']):
         elif (var in self.mb_data.keys()):
             return self.mb_data[var]
-        elif (var in ['ones','mass','pres','entropy','momx','momy','momz','momtot','velr',\
-            'momr','velin','velout','vtot2','vtot','vrot','ekin','etot','amx','amy','amz',\
+        elif (var in ['ones','mass','pres','temp','entropy','momx','momy','momz','momtot','momr',\
+            'velr','velin','velout','vtot2','vtot','vrot','ekin','etot','amx','amy','amz',\
             'amtot','mdot','mdotin','mdotout','momflx','momflxin','momflxout',\
             'ekflx','ekflxin','ekflxout','bccr','btot2','btot','brot',]):
             if (var=='ones'):
-                return np.ones(self.mb_data['dens'].shape)
+                return np.ones(self.data('dens').shape)
             if (var=='mass'):
-                return self.coord['vol']*self.mb_data['dens']
+                return self.coord['vol']*self.data('dens')
             elif (var=='pres'):
-                return (self.gamma-1)*self.mb_data['eint']
+                return (self.gamma-1)*self.data('eint')
+            elif (var=='temp'):
+                return (self.gamma-1)*self.data('eint')/self.data('dens')
             elif (var=='entropy'):
-                return self.data('pres')/self.mb_data['dens']**self.gamma
+                return self.data('pres')/self.data('dens')**self.gamma
             elif (var=='momx'):
-                return self.mb_data['velx']*self.mb_data['dens']
+                return self.data('velx')*self.data('dens')
             elif (var=='momy'):
-                return self.mb_data['vely']*self.mb_data['dens']
+                return self.data('vely')*self.data('dens')
             elif (var=='momz'):
-                return self.mb_data['velz']*self.mb_data['dens']
+                return self.data('velz')*self.data('dens')
             elif (var=='velr'):
-                return (self.mb_data['velx']*self.coord['x']+\
-                        self.mb_data['vely']*self.coord['y']+\
-                        self.mb_data['velz']*self.coord['z'])/self.coord['r']
+                return (self.data('velx')*self.coord['x']+\
+                        self.data('vely')*self.coord['y']+\
+                        self.data('velz')*self.coord['z'])/self.coord['r']
             elif (var=='momr'):
-                return self.data('velr')*self.mb_data['dens']
+                return self.data('velr')*self.data('dens')
             elif (var=='velin'):
                 return np.minimum(self.data('velr'),0.0)
             elif (var=='velout'):
@@ -680,11 +656,11 @@ class AthenaBinary:
             elif (var=='vrot'):
                 return np.sqrt(self.data('vtot2')-self.data('velr')**2)
             elif (var=='momtot'):
-                return self.mb_data['dens']*self.data('vtot')
+                return self.data('dens')*self.data('vtot')
             elif (var=='ekin'):
-                return 0.5*self.mb_data['dens']*self.data('vtot2')
+                return 0.5*self.data('dens')*self.data('vtot2')
             elif (var=='etot'):
-                return self.data('ekin')+self.mb_data['eint']
+                return self.data('ekin')+self.data('eint')
             elif (var=='amx'):
                 return self.data('y')*self.data('velz')-self.data('z')*self.data('vely')
             elif (var=='amy'):
@@ -694,27 +670,27 @@ class AthenaBinary:
             elif (var=='amtot'):
                 return self.data('r')*self.data('vrot')
             elif (var=='mdot'):
-                return self.mb_data['dens']*self.data('velr')
+                return self.data('dens')*self.data('velr')
             elif (var=='mdotin'):
-                return self.mb_data['dens']*self.data('velin')
+                return self.data('dens')*self.data('velin')
             elif (var=='mdotout'):
-                return self.mb_data['dens']*self.data('velout')
+                return self.data('dens')*self.data('velout')
             elif (var=='momflx'):
-                return self.mb_data['dens']*self.data('velr')*self.data('velr')
+                return self.data('dens')*self.data('velr')*self.data('velr')
             elif (var=='momflxin'):
-                return self.mb_data['dens']*self.data('velr')*self.data('velin')
+                return self.data('dens')*self.data('velr')*self.data('velin')
             elif (var=='momflxout'):
-                return self.mb_data['dens']*self.data('velr')*self.data('velout')
+                return self.data('dens')*self.data('velr')*self.data('velout')
             elif (var=='ekflx'):
-                return self.mb_data['dens']*.5*self.data('vtot2')*self.data('velr')
+                return self.data('dens')*.5*self.data('vtot2')*self.data('velr')
             elif (var=='ekflxin'):
-                return self.mb_data['dens']*.5*self.data('vtot2')*self.data('velin')
+                return self.data('dens')*.5*self.data('vtot2')*self.data('velin')
             elif (var=='ekflxout'):
-                return self.mb_data['dens']*.5*self.data('vtot2')*self.data('velout')
+                return self.data('dens')*.5*self.data('vtot2')*self.data('velout')
             elif (var=='bccr'):
-                return (self.mb_data['bcc1']*self.coord['x']+\
-                        self.mb_data['bcc2']*self.coord['y']+\
-                        self.mb_data['bcc3']*self.coord['z'])/self.coord['r']
+                return (self.data('bcc1')*self.coord['x']+\
+                        self.data('bcc2')*self.coord['y']+\
+                        self.data('bcc3')*self.coord['z'])/self.coord['r']
             elif (var=='btot2'):
                 return self.data('bcc1')**2+self.data('bcc2')**2+self.data('bcc3')**2
             elif (var=='btot'):
@@ -724,8 +700,8 @@ class AthenaBinary:
             else:
                 raise ValueError(f"No variable callled '{var}' ")
         # user vars
-        elif (var in self.user_data.keys()):
-            return self.user_data[var]
+        elif (var in self.user_func.keys()):
+            return self.user_func[var](self)
         else:
             raise ValueError(f"No variable callled '{var}' ")
         return None
@@ -940,12 +916,12 @@ class AthenaBinary:
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
         return np.average(self.get_data(var,level=level,xyz=xyz),axis=axis),xyz
 
-    def set_slice(self,varl=['dens','temp'],varsuf='',zoom=0,level=0,xyz=[],redo=False):
+    def set_slice(self,varl=['dens','temp'],varsuf='',zoom=0,level=0,xyz=[],axis=0,redo=False):
         for var in varl:
             varname = var+varsuf
             if (redo or varname not in self.slice.keys()):
                 self.slice[varname] = {}
-                data = self.get_slice(var,zoom=zoom,level=level,xyz=xyz)
+                data = self.get_slice(var,zoom=zoom,level=level,xyz=xyz,axis=axis)
                 self.slice[varname]['dat'] = data[0]
                 self.slice[varname]['xyz'] = data[1]
 
@@ -1024,7 +1000,7 @@ class AthenaBinary:
                       norm=LogNorm(1e-1,1e1),save=False,figdir='../figure/Simu_',figpath=None,\
                       savepath='',savelabel='',figlabel='',dpi=200,vel=None,stream=None,circle=True,\
                       fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,stream_color='k',stream_linewidth=None,\
-                      stream_arrowsize=None,vecx='velx',vecy='vely',vel_method='ave',**kwargs):
+                      stream_arrowsize=None,vecx='velx',vecy='vely',vel_method='ave',axis=0,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         bins=int(np.min([self.Nx1,self.Nx2,self.Nx3])) if not bins else bins
@@ -1040,18 +1016,18 @@ class AthenaBinary:
             slc = self.slice[varname]['dat']*unit
             xyz = list(self.slice[varname]['xyz'])
         else:
-            slc = self.get_slice(var,zoom=zoom,level=level,xyz=xyz)[0]*unit
+            slc = self.get_slice(var,zoom=zoom,level=level,xyz=xyz,axis=axis)[0]*unit
         x0,x1,y0,y1,z0,z1 = xyz[0],xyz[1],xyz[2],xyz[3],xyz[4],xyz[5]
         if (vel is not None):
-            x,y,z = self.get_slice_coord(zoom=zoom,level=vel,xyz=list(xyz))[:3]
+            x,y,z = self.get_slice_coord(zoom=zoom,level=vel,xyz=list(xyz),axis=axis)[:3]
             if (f'{vecx}_{zoom}' in self.slice.keys()):
                 u = self.slice[f'{vecx}_{zoom}']['dat']
             else:
-                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz))[0]
+                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
             if (f'{vecy}_{zoom}' in self.slice.keys()):
                 v = self.slice[f'{vecy}_{zoom}']['dat']
             else:
-                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz))[0]
+                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
             #x = self.get_slice('x',zoom=zoom,level=vel,xyz=xyz)[0]
             #y = self.get_slice('y',zoom=zoom,level=vel,xyz=xyz)[0]
             fac=max(int(2**(level-vel)),1)
@@ -1065,17 +1041,17 @@ class AthenaBinary:
                 v=v[int(fac/2)::fac,int(fac/2)::fac]
             ax.quiver(x*xyunit, y*xyunit, u, v)
         if (stream is not None):
-            x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz)[:3]
+            x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz,axis=axis)[:3]
             #x = self.get_slice('x',zoom=zoom,level=stream,xyz=xyz)[0]
             #y = self.get_slice('y',zoom=zoom,level=stream,xyz=xyz)[0]
             if (f'{vecx}_{zoom}' in self.slice.keys()):
                 u = self.slice[f'{vecx}_{zoom}']['dat']
             else:
-                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz))[0]
+                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
             if (f'{vecy}_{zoom}' in self.slice.keys()):
                 v = self.slice[f'{vecy}_{zoom}']['dat']
             else:
-                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz))[0]
+                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
             #x,y=np.meshgrid(x,y)
             #z,x=np.meshgrid(z,x)
             #np.mgrid[-w:w:100j, -w:w:100j]
@@ -1083,7 +1059,11 @@ class AthenaBinary:
             #step=16
             #ax.streamplot(x[beg::step,beg::step], z[beg::step,beg::step], (u[0]/norm[0])[beg::step,beg::step], (v[0]/norm[0])[beg::step,beg::step])
             #print(x.shape,y.shape,u.shape,v.shape)
+            if(axis==1): x,y = z.swapaxes(0,1), x.swapaxes(0,1)
+            if(axis==2): x,y = y,z
             ax.streamplot(x*xyunit, y*xyunit, u, v,color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
+        if(axis==1): x0,x1,y0,y1 = z0,z1,x0,x1
+        if(axis==2): x0,x1,y0,y1 = y0,y1,z0,z1
         im=ax.imshow(slc[::-1,:],extent=(x0*xyunit,x1*xyunit,y0*xyunit,y1*xyunit),\
             norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(slc.swapaxes(0,1)[::-1,:],extent=(x0,x1,y0,y1),norm=norm,cmap=cmap,**kwargs)
@@ -1132,14 +1112,17 @@ class AthenaBinary:
 
     def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',unit=1.0,cmap='viridis',\
                    norm=LogNorm(1e-3,1e1),extent=None,density=False,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
-                   figpath='',fig=None,ax=None,dpi=128,aspect='auto',**kwargs):
+                   figpath='',x=None,y=None,xshift=0.0,xunit=1.0,yshift=0.0,yunit=1.0,fig=None,ax=None,dpi=128,aspect='auto',**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         dat = self.dist2d[varname]
         extent = [dat['loc1'].min(),dat['loc1'].max(),dat['loc2'].min(),dat['loc2'].max()] if extent is None else extent
         if (density):
             unit /= (extent[1]-extent[0])*(extent[3]-extent[2])/((dat['loc1'].shape[0]-1)*(dat['loc2'].shape[0]-1))
-        im = ax.imshow(dat['dat'].swapaxes(0,1)[::-1,:]*unit,extent=extent,norm=norm,cmap=cmap,aspect=aspect,**kwargs)
+        #im = ax.imshow(dat['dat'].swapaxes(0,1)[::-1,:]*unit,extent=extent,norm=norm,cmap=cmap,aspect=aspect,**kwargs)
+        x =  dat['loc1']*xunit+xshift if x is None else x
+        y =  dat['loc2']*yunit+yshift if y is None else y
+        im = ax.pcolormesh(x,y,dat['dat'].swapaxes(0,1)[:,:]*unit,norm=norm,cmap=cmap,**kwargs)
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="4%", pad=0.02)
         ax.set_xlabel(xlabel)
