@@ -1,3 +1,4 @@
+import os
 from time import sleep
 import numpy as np
 from matplotlib import pyplot as plt
@@ -7,6 +8,8 @@ from matplotlib.colors import Normalize
 from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import interp1d as sp_interp1d
+
+import athenakit.athenakit as ak
 
 # units
 cm_cgs = 1.0;                           # cm
@@ -27,6 +30,7 @@ kelvin_cgs = 1.0;                       # k
 k_boltzmann_cgs = 1.3806488e-16;        # erg/k
 grav_constant_cgs = 6.67408e-8;         # cm^3/(g*s^2)
 speed_of_light_cgs = 2.99792458e10      # cm/s
+
 class Units:
     def __init__(self,lunit=pc_cgs,munit=atomic_mass_unit_cgs*pc_cgs**3,tunit=myr_cgs,mu=1.0):
         self.length_cgs=lunit
@@ -77,6 +81,24 @@ class Units:
 
 mu=0.618
 unit=Units(lunit=kpc_cgs,munit=mu*atomic_mass_unit_cgs*kpc_cgs**3,mu=mu)
+
+# Convert all binary files in binary path to athdf files in athdf path
+def bin_to_athdf(binpath,athdfpath,overwrite=False):
+    if not os.path.isdir(athdfpath):
+        os.mkdir(athdfpath)
+    for file in sorted(os.listdir(binpath)):
+        if file.endswith(".bin"):
+            binary_fname = os.path.join(binpath, file)
+            athdf_fname = os.path.join(athdfpath, file.replace(".bin", ".athdf"))
+            xdmf_fname = athdf_fname + ".xdmf"
+            if (overwrite or not os.path.exists(athdf_fname) or not os.path.exists(xdmf_fname)):
+                print(f"Converting {file}")
+                filedata = ak.read_binary(binary_fname)
+                ak.write_athdf(athdf_fname, filedata)
+                ak.write_xdmf_for(xdmf_fname, os.path.basename(athdf_fname), filedata)
+            else:
+                print(f"Skipping {file}")
+    return
 
 @np.vectorize
 def CoolFnShure_vec(T):

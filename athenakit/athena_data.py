@@ -182,7 +182,7 @@ class AthenaData:
         self.data_func['ones'] = lambda self : np.ones(self.data('dens').shape)
         self.data_func['vol'] = lambda self : self.data('dx')*self.data('dy')*self.data('dz')
         self.data_func['r'] = lambda self : np.sqrt(self.data('x')**2+self.data('y')**2+self.data('z')**2)
-        self.data_func['mass'] = lambda self : self.coord['vol']*self.data('dens')
+        self.data_func['mass'] = lambda self : self.data('vol')*self.data('dens')
         self.data_func['pres'] = lambda self : (self.gamma-1)*self.data('eint')
         self.data_func['temp'] = lambda self : (self.gamma-1)*self.data('eint')/self.data('dens')
         self.data_func['entropy'] = lambda self : self.data('pres')/self.data('dens')**self.gamma
@@ -249,9 +249,6 @@ class AthenaData:
         k_min = int((xyz[4]-self.x3min)*nx3_fac)
         k_max = int((xyz[5]-self.x3min)*nx3_fac)
         # TODO(@mhguo)
-        #print("coord: ",nx1_fac,i_min,i_max)
-        #print("coord: ",nx2_fac,j_min,j_max)
-        #print("coord: ",nx3_fac,k_min,k_max)
         #data = np.zeros((k_max-k_min, j_max-j_min, i_max-i_min))
         x=np.linspace(xyz[0],xyz[1],i_max-i_min)
         y=np.linspace(xyz[2],xyz[3],j_max-j_min)
@@ -385,12 +382,12 @@ class AthenaData:
         for var in varl:
             varname = var+varsuf
             if (redo or varname not in self.rad.keys()):
-                logr = np.log10(self.coord['r'])
+                logr = np.log10(self.data('r'))
                 weinorm = self.data(weights)
                 hist = np.histogram(logr,bins=bins,weights=weinorm)
                 self.rad['r'] = (10**((hist[1][:-1]+hist[1][1:])/2))
                 r_range = (hist[1][0],hist[1][-1])
-                r_locs = np.logical_and(hist[0]!=0,self.rad['r']<self.rmax)
+                r_locs = np.logical_and(hist[0]!=0,self.rad['r'])
                 self.rad['r'] = self.rad['r'][r_locs]
                 dr_locs = np.append(r_locs,True)
                 self.rad['dr'] = (10**((hist[1][dr_locs])[1:])-10**((hist[1][dr_locs])[:-1]))
@@ -422,12 +419,16 @@ class AthenaData:
         x,y,z,dx,dy,dz=self.uni_coord(level=level,xyz=xyz)
         return np.average(x,axis=axis),np.average(y,axis=axis),np.average(z,axis=axis),xyz
 
+    # TODO(@mhguo): we should have the ability to get slice at any position with any direction
     def get_slice(self,var='dens',zoom=0,level=0,xyz=[],axis=0):
         if (not xyz):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
                    self.x2min/2**zoom,self.x2max/2**zoom,
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
         return np.average(self.uni_data(var,level=level,xyz=xyz),axis=axis),xyz
+    
+    #def get_slice(self,var='dens',normal='z',north='y',center=[0.,0.,0.],width=1,height=1,zoom=0,level=0):
+    #    return
 
     def set_slice(self,varl=['dens','temp'],varsuf='',zoom=0,level=0,xyz=[],axis=0,redo=False):
         for var in varl:
@@ -486,7 +487,6 @@ class AthenaData:
                 self.dist2d[varname]['loc2'] = dat[2]
         return
 
-    # TODO(@mhguo): we should have the ability to plot any direction at any position
     def plot_slice(self,var='dens',data=None,varname='',zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
                    title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
                    norm='log',save=False,figdir='../figure/Simu_',figpath=None,\
@@ -613,24 +613,25 @@ class AthenaData:
 
 
 class AthenaDataSet:
-    def __init__(self,nlim=10001):
+    def __init__(self,nlim=10001,version='1.0'):
         self.nlim=nlim
-        self.ads=[None]*self.nlim
+        self.version=version
+        self.ilist=[]
+        self.alist=[None]*self.nlim
         self._config_func()
         return
 
     def _config_func(self):
         ad_methods = [method_name for method_name in dir(AthenaData) if callable(getattr(AthenaData, method_name))]
         for method_name in ad_methods:
-            self.__dict__[method_name] = lambda *args, **kwargs: [getattr(ad, method_name)(*args, **kwargs) for ad in self.ads]
+            self.__dict__[method_name] = lambda *args, **kwargs: [getattr(self.alist[i], method_name)(self.alist[i], *args, **kwargs) for i in self.ilist]
         return
 
-    def load(self,ilist,info=False,redo=False,**kwargs):
+    def load_list(self,ilist,path=None,dtype=None,info=False,**kwargs):
         for i in ilist:
-            if(redo or i not in self.alist):
-                if(info): print("load:",i)
-                if self.ads[i] is None:
-                    self.ads[i]=AthenaData(path=self.path,label=self.label,num=i,version=self.version)
-                self.ads[i].load(self.binarypath+f"{i:05d}.bin",**kwargs)
-            self.alist=sorted(list(set(self.alist + list([i]))))
+            if(info): print("load:",i)
+            if self.alist[i] is None:
+                self.alist[i]=AthenaData(num=i,version=self.version)
+            self.alist[i].load(path+f".{i:05d}."+dtype,**kwargs)
+            self.ilist=sorted(list(set(self.ilist + list([i]))))
         return
