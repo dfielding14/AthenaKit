@@ -9,7 +9,7 @@ from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import interp1d as sp_interp1d
 
-import athenakit.athenakit as ak
+from .. import athenakit as ak
 
 # units
 cm_cgs = 1.0;                           # cm
