@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import numpy as np
 import h5py
+import pickle
 import warnings
 from packaging.version import parse as version_parse
 
@@ -22,7 +23,7 @@ class AthenaData:
         self._header={}
         self.binary={}
         self.coord={}
-        self.mb_data={}
+        self.data_raw={}
         self.data_func={}
         self.hist={} # TODO(@mhguo): change to sum?
         self.rad={}
@@ -33,19 +34,37 @@ class AthenaData:
         return
     
     # TODO(@mhguo): write a correct function to load data
-    def load(self,filename,config=True):
+    def load(self,filename,config=True,**kwargs):
         self.filename=filename
         if (filename.endswith('.bin')):
             self.binary_name = filename
-            self.load_binary(filename)
+            self.load_binary(filename,**kwargs)
         elif (filename.endswith('.athdf')):
             self.athdf_name = filename
-            self.load_athdf(filename)
-        elif (filename.endswith('.hdf5')):
+            self.load_athdf(filename,**kwargs)
+        elif (filename.endswith(('.h5','.hdf5'))):
             self.hdf5_name = filename
-            self.load_hdf5(filename)
+            self.load_hdf5(filename,**kwargs)
+        elif (filename.endswith('.pkl')):
+            self.hdf5_name = filename
+            self.load_pickle(filename,**kwargs)
         if (config):
             self.config()
+        return
+
+    def save(self,filename,except_keys=[],
+             default_except_keys=['binary', 'h5file', 'h5dic', 'coord', 'data_raw', 'data_func'],
+             **kwargs):
+        dic={}
+        for k,v in self.__dict__.items():
+            if (k not in except_keys+default_except_keys):
+                dic[k]=v
+        if (filename.endswith(('.h5','.hdf5'))):
+            self.save_hdf5(dic,filename,**kwargs)
+        elif (filename.endswith(('.p','.pkl'))):
+            self.save_pickle(dic,filename,**kwargs)
+        else:
+            raise ValueError(f"Unknown file type: {filename.split('.')[-1]}")
         return
 
     def load_binary(self,filename):
@@ -56,21 +75,24 @@ class AthenaData:
     def load_athdf(self,filename):
         self._load_from_athdf(filename)
         return
-
-    def load_hdf5(self,filename):
-        self._load_from_dic(load_dict_from_hdf5(filename))
-        return
     
-    def save_hdf5(self,filename):
-        dic={}
-        for k,v in self.__dict__.items():
-            if (k in ['binary', 'coord', 'mb_data', 'h5file', 'h5dic']):
-                continue
-            dic[k]=v
+    def load_pickle(self,filename,**kwargs):
+        self._load_from_dic(pickle.load(open(filename,'rb')),**kwargs)
+        return
+
+    def load_hdf5(self,filename,**kwargs):
+        self._load_from_dic(load_dict_from_hdf5(filename),**kwargs)
+        return
+
+    def save_hdf5(self,dic,filename):
         save_dict_to_hdf5(dic,filename)
         return
+    
+    def save_pickle(self,dic,filename):
+        pickle.dump(dic,open(filename,'wb'))
+        return
 
-    def _load_from_dic(self,dic,except_keys=['header', 'data', 'binary', 'coord', 'mb_data']):
+    def _load_from_dic(self,dic,except_keys=['header', 'data', 'binary', 'coord', 'data_raw']):
         for k,v in dic.items():
             if (k not in except_keys):
                 self.__dict__[k]=v
@@ -80,7 +102,7 @@ class AthenaData:
         self.binary = binary
         self._load_from_dic(self.binary)
         for var in self.binary['var_names']:
-            self.mb_data[var]=np.asarray(binary['mb_data'][var])
+            self.data_raw[var]=np.asarray(binary['mb_data'][var])
         self._config_header(self.binary['header'])
         self._config_attrs_from_header()
         return
@@ -102,14 +124,14 @@ class AthenaData:
         for ds_n,num in enumerate(self.h5file.attrs['NumVariables']):
             for i in range(num):
                 var = self.h5file.attrs['VariableNames'][n_var_read+i].decode("utf-8")
-                self.mb_data[var] = self.h5dic[self.h5file.attrs['DatasetNames'][ds_n].decode("utf-8")][i]
+                self.data_raw[var] = self.h5dic[self.h5file.attrs['DatasetNames'][ds_n].decode("utf-8")][i]
             n_var_read += num
         return
 
     def config(self):
         if (not self.coord): self.set_coord()
         self._config_data_func()
-        self.path = Path(self.filename).parent
+        self.path = str(Path(self.filename).parent)
         self.num = int(self.filename.split('.')[-2])
         # assuming use_e=True
         # assuming we have dens, velx, vely, velz, eint
@@ -119,7 +141,7 @@ class AthenaData:
     def _config_header(self, header):
         for line in [entry for entry in header]:
             if line.startswith('<'):
-                block = line
+                block = line.strip('<').strip('>')
                 self._header[block]={}
                 continue
             key, value = line.split('=')
@@ -128,10 +150,6 @@ class AthenaData:
     def header(self, blockname, keyname, astype=str, default=None):
         blockname = blockname.strip()
         keyname = keyname.strip()
-        if not blockname.startswith('<'):
-            blockname = '<' + blockname
-        if blockname[-1] != '>':
-            blockname += '>'
         if blockname in self._header.keys():
             if keyname in self._header[blockname].keys():
                 return astype(self._header[blockname][keyname])
@@ -174,11 +192,12 @@ class AthenaData:
         return
 
     ### data handling ###
-    def add_data(self,name,func):
+    def add_data_func(self,name,func):
         self.data_func[name]=func
         return
     
     def _config_data_func(self):
+        self.data_func['zeros'] = lambda self : np.zeros(self.data('dens').shape)
         self.data_func['ones'] = lambda self : np.ones(self.data('dens').shape)
         self.data_func['vol'] = lambda self : self.data('dx')*self.data('dy')*self.data('dz')
         self.data_func['r'] = lambda self : np.sqrt(self.data('x')**2+self.data('y')**2+self.data('z')**2)
@@ -195,15 +214,15 @@ class AthenaData:
         self.data_func['momr'] = lambda self : self.data('velr')*self.data('dens')
         self.data_func['velin'] = lambda self : np.minimum(self.data('velr'),0.0)
         self.data_func['velout'] = lambda self : np.maximum(self.data('velr'),0.0)
-        self.data_func['vtot2'] = lambda self : self.data('velx')**2+self.data('vely')**2+self.data('velz')**2
-        self.data_func['vtot'] = lambda self : np.sqrt(self.data('vtot2'))
-        self.data_func['vrot'] = lambda self : np.sqrt(self.data('vtot2')-self.data('velr')**2)
+        self.data_func['vtot^2'] = lambda self : self.data('velx')**2+self.data('vely')**2+self.data('velz')**2
+        self.data_func['vtot'] = lambda self : np.sqrt(self.data('vtot^2'))
+        self.data_func['vrot'] = lambda self : np.sqrt(self.data('vtot^2')-self.data('velr')**2)
         self.data_func['momtot'] = lambda self : self.data('dens')*self.data('vtot')
-        self.data_func['ekin'] = lambda self : 0.5*self.data('dens')*self.data('vtot2')
+        self.data_func['ekin'] = lambda self : 0.5*self.data('dens')*self.data('vtot^2')
         self.data_func['etot'] = lambda self : self.data('ekin')+self.data('eint')
-        self.data_func['amx'] = lambda self : self.data('y')*self.data('velz')-self.data('z')*self.data('vely')
-        self.data_func['amy'] = lambda self : self.data('z')*self.data('velx')-self.data('x')*self.data('velz')
-        self.data_func['amz'] = lambda self : self.data('x')*self.data('vely')-self.data('y')*self.data('velx')
+        self.data_func['jx'] = lambda self : self.data('y')*self.data('velz')-self.data('z')*self.data('vely')
+        self.data_func['jy'] = lambda self : self.data('z')*self.data('velx')-self.data('x')*self.data('velz')
+        self.data_func['jz'] = lambda self : self.data('x')*self.data('vely')-self.data('y')*self.data('velx')
         self.data_func['amtot'] = lambda self : self.data('r')*self.data('vrot')
         self.data_func['mdot'] = lambda self : self.data('dens')*self.data('velr')
         self.data_func['mdotin'] = lambda self : self.data('dens')*self.data('velin')
@@ -211,27 +230,41 @@ class AthenaData:
         self.data_func['momflx'] = lambda self : self.data('dens')*self.data('velr')*self.data('velr')
         self.data_func['momflxin'] = lambda self : self.data('dens')*self.data('velr')*self.data('velin')
         self.data_func['momflxout'] = lambda self : self.data('dens')*self.data('velr')*self.data('velout')
-        self.data_func['ekflx'] = lambda self : self.data('dens')*.5*self.data('vtot2')*self.data('velr')
-        self.data_func['ekflxin'] = lambda self : self.data('dens')*.5*self.data('vtot2')*self.data('velin')
-        self.data_func['ekflxout'] = lambda self : self.data('dens')*.5*self.data('vtot2')*self.data('velout')
-        self.data_func['bccr'] = lambda self : (self.data('bcc1')*self.data('x')+\
-                                                self.data('bcc2')*self.data('y')+\
-                                                self.data('bcc3')*self.data('z'))/self.data('r')
-        self.data_func['btot2'] = lambda self : self.data('bcc1')**2+self.data('bcc2')**2+self.data('bcc3')**2
-        self.data_func['btot'] = lambda self : np.sqrt(self.data('btot2'))
-        self.data_func['brot'] = lambda self : np.sqrt(self.data('btot2')-self.data('bccr')**2)
+        self.data_func['ekflx'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velr')
+        self.data_func['ekflxin'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velin')
+        self.data_func['ekflxout'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velout')
+        self.data_func['bccx'] = lambda self : self.data('bcc1')
+        self.data_func['bccy'] = lambda self : self.data('bcc2')
+        self.data_func['bccz'] = lambda self : self.data('bcc3')
+        self.data_func['bccr'] = lambda self : (self.data('bccx')*self.data('x')+\
+                                                self.data('bccy')*self.data('y')+\
+                                                self.data('bccz')*self.data('z'))/self.data('r')
+        self.data_func['btot^2'] = lambda self : self.data('bccx')**2+self.data('bccy')**2+self.data('bccz')**2
+        self.data_func['btot'] = lambda self : np.sqrt(self.data('btot^2'))
+        self.data_func['brot'] = lambda self : np.sqrt(self.data('btot^2')-self.data('bccr')**2)
         return
 
+    @property
+    def data_list(self):
+        return list(self.coord.keys())+list(self.data_raw.keys())+list(self.data_func.keys())
+
     def data(self,var):
-        if (var in self.coord.keys()):
-            return self.coord[var]
-        elif (var in self.mb_data.keys()):
-            return self.mb_data[var]
-        # derived vars
-        elif (var in self.data_func.keys()):
-            return self.data_func[var](self)
+        if (type(var) is str):
+            # coordinate
+            if (var in self.coord.keys()):
+                return self.coord[var]
+            # raw data
+            elif (var in self.data_raw.keys()):
+                return self.data_raw[var]
+            # derived data
+            elif (var in self.data_func.keys()):
+                return self.data_func[var](self)
+            else:
+                raise ValueError(f"No variable callled '{var}' ")
+        elif (type(var) in [list,tuple]):
+            return [self.data(v) for v in var]
         else:
-            raise ValueError(f"No variable callled '{var}' ")
+            return var
 
     ### uniform data ###
     # TODO(@mhguo): deal with the cell center and cell edge issue
@@ -374,7 +407,39 @@ class AthenaData:
                                                                 /(s**num_extended_dims)
         return data
     
-    ### histogram ###
+    ### profile ###
+    # TODO: may try to improve the performance since it is slow now
+    def sum(self,var,**kwargs):
+        return np.sum(self.data(var),**kwargs)
+    def average(self,var,weights=None,where=None,**kwargs):
+        return np.average(self.data(var)[where],weights=self.data(weights)[where],**kwargs)
+    def profile(self,bin_varl,varl,weights=None,bins=None,scales=None,where=None,**kwargs):
+        if (type(bin_varl) is str):
+            bin_varl = [bin_varl]
+        if (type(varl) is str):
+            varl = [varl]
+        if (type(weights) is str):
+            weights = self.data(weights)[where].ravel()
+        if (scales):
+            if (type(bins) is int):
+                n_bins = bins
+                bins = [n_bins for v in bin_varl]
+            for i,v in enumerate(bin_varl):
+                if (type(bins[i]) is int and ((type(scales) is str and scales=='log') or
+                                              (type(scales) is list and scales[i]=='log') or 
+                                              (type(scales) is dict and v in scales.keys() and scales[v]=='log')
+                                              )):
+                    bins[i] = np.geomspace(self.data(v)[where][self.data(v)[where]>0.0].min(),self.data(v)[where].max(),bins[i]+1)
+        norm = np.histogramdd([self.data(v)[where].ravel() for v in bin_varl],weights=weights,bins=bins,**kwargs)
+        data = {'edges':np.asarray(norm[1])}
+        data['centers'] = (data['edges'][:,:-1]+data['edges'][:,1:])/2
+        for var in varl:
+            if (weights is None):
+                data_weights = self.data(var)[where].ravel()
+            else:
+                data_weights = self.data(var)[where].ravel()*weights
+            data[var] = np.histogramdd([self.data(v)[where].ravel() for v in bin_varl],weights=data_weights,bins=bins,**kwargs)[0]/norm[0]
+        return data
 
     ### radial profile ###
     def set_radial(self,varl=['dens','temp','velr','mdot'],varsuf='',bins=1000,\
