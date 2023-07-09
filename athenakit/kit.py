@@ -9,7 +9,7 @@ from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import interp1d as sp_interp1d
 
-from .. import athenakit as ak
+from . import io
 
 # units
 cm_cgs = 1.0;                           # cm
@@ -93,9 +93,9 @@ def bin_to_athdf(binpath,athdfpath,overwrite=False):
             xdmf_fname = athdf_fname + ".xdmf"
             if (overwrite or not os.path.exists(athdf_fname) or not os.path.exists(xdmf_fname)):
                 print(f"Converting {file}")
-                filedata = ak.read_binary(binary_fname)
-                ak.write_athdf(athdf_fname, filedata)
-                ak.write_xdmf_for(xdmf_fname, os.path.basename(athdf_fname), filedata)
+                filedata = io.read_binary(binary_fname)
+                io.write_athdf(athdf_fname, filedata)
+                io.write_xdmf_for(xdmf_fname, os.path.basename(athdf_fname), filedata)
             else:
                 print(f"Skipping {file}")
     return
