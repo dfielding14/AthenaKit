@@ -1,6 +1,6 @@
 # AthenaResearch
 
-Progress record of research with AthenaK
+Research with AthenaK
 
 ## Getting started
 
