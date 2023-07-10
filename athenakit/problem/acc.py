@@ -1,4 +1,7 @@
-import numpy as np
+try:
+    import cupy as xp
+except ImportError:
+    import numpy as xp
 from numpy.linalg import inv
 from ... import athenakit as ak
 
@@ -25,12 +28,12 @@ def add_tran(ad):
     jy=ad.average('jy',where=ad.data('temp')<ad.header('problem','t_cold',float),weights='mass')
     jz=ad.average('jz',where=ad.data('temp')<ad.header('problem','t_cold',float),weights='mass')
     def normal(vec):
-        return vec/np.sqrt(np.sum(vec**2))
-    disk_z = normal(np.array([jx,jy,jz]))
-    y_12=[0,1]
-    disk_y=normal(np.array([(-y_12[0]*disk_z[1]-y_12[1]*disk_z[2])/disk_z[0],y_12[0],y_12[1]]))
-    disk_x=normal(np.cross(disk_y,disk_z))
-    ad.tran=inv(np.stack((disk_x,disk_y,disk_z)).T)
+        return vec/xp.sqrt(xp.sum(vec**2))
+    disk_z = normal(xp.array([jx,jy,jz]))
+    y_12=xp.asarray([0,1])
+    disk_y=normal(xp.array([(-y_12[0]*disk_z[1]-y_12[1]*disk_z[2])/disk_z[0],y_12[0],y_12[1]]))
+    disk_x=normal(xp.cross(disk_y,disk_z))
+    ad.tran=inv(xp.stack((disk_x,disk_y,disk_z)).T)
 
 def add_data(ad,add_bcc=True):
     if ('bcc1' not in ad.data_raw.keys()) and add_bcc:
@@ -50,7 +53,7 @@ def add_data(ad,add_bcc=True):
     ad.add_data_func('tran_bccy', lambda sf : sf.tran[1,0]*sf.data('bccx')+sf.tran[1,1]*sf.data('bccy')+sf.tran[1,2]*sf.data('bccz'))
     ad.add_data_func('tran_bccz', lambda sf : sf.tran[2,0]*sf.data('bccx')+sf.tran[2,1]*sf.data('bccy')+sf.tran[2,2]*sf.data('bccz'))
 
-    ad.add_data_func('tran_R', lambda sf : np.sqrt(sf.data('tran_x')**2+sf.data('tran_y')**2))
+    ad.add_data_func('tran_R', lambda sf : xp.sqrt(sf.data('tran_x')**2+sf.data('tran_y')**2))
     ad.add_data_func('tran_velR', lambda sf : (sf.data('tran_x')*sf.data('tran_velx')+sf.data('tran_y')*sf.data('tran_vely'))/sf.data('tran_R'))
     ad.add_data_func('tran_velphi', lambda sf : (sf.data('tran_x')*sf.data('tran_vely')-sf.data('tran_y')*sf.data('tran_velx'))/sf.data('tran_R'))
     ad.add_data_func('tran_bccR', lambda sf : (sf.data('tran_x')*sf.data('tran_bccx')+sf.data('tran_y')*sf.data('tran_bccy'))/sf.data('tran_R'))
@@ -64,7 +67,7 @@ def add_data(ad,add_bcc=True):
     ad.add_data_func('tran_stress_Rphi_maxwell', lambda sf : -sf.data('tran_bccR')*sf.data('tran_bccphi'))
     ad.add_data_func('tran_stress_Rphi', lambda sf : sf.data('tran_stress_Rphi_reynolds')+sf.data('tran_stress_Rphi_maxwell'))
 
-    ad.add_data_func('tran_Omega', lambda sf : np.sqrt(sf.accel(sf.data('tran_R'))/sf.data('tran_R')))
+    ad.add_data_func('tran_Omega', lambda sf : xp.sqrt(sf.accel(sf.data('tran_R'))/sf.data('tran_R')))
     ad.add_data_func('tran_radial_flow', lambda sf : 0.5*sf.data('dens')*sf.data('tran_velR')*sf.data('tran_Omega'))
     ad.add_data_func('tran_z/R', lambda sf : sf.data('tran_z')/sf.data('tran_R'))
 
