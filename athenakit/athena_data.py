@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
-import numpy as np
+try:
+    import cupy as xp
+except ImportError:
+    import numpy as xp
 import h5py
 import pickle
 import warnings
@@ -102,7 +105,7 @@ class AthenaData:
         self.binary = binary
         self._load_from_dic(self.binary)
         for var in self.binary['var_names']:
-            self.data_raw[var]=np.asarray(binary['mb_data'][var])
+            self.data_raw[var]=xp.asarray(binary['mb_data'][var])
         self._config_header(self.binary['header'])
         self._config_attrs_from_header()
         return
@@ -116,15 +119,15 @@ class AthenaData:
         self.time = self.h5file.attrs['Time']
         self.cycle = self.h5file.attrs['NumCycles']
         self.n_mbs = self.h5file.attrs['NumMeshBlocks']
-        self.mb_logical = np.append(self.h5dic['LogicalLocations'],self.h5dic['Levels'].reshape(-1,1),axis=1)
-        self.mb_geometry = np.asarray([self.h5dic['x1f'][:,0],self.h5dic['x1f'][:,-1],
+        self.mb_logical = xp.append(self.h5dic['LogicalLocations'],self.h5dic['Levels'].reshape(-1,1),axis=1)
+        self.mb_geometry = xp.asarray([self.h5dic['x1f'][:,0],self.h5dic['x1f'][:,-1],
                                        self.h5dic['x2f'][:,0],self.h5dic['x2f'][:,-1],
                                        self.h5dic['x3f'][:,0],self.h5dic['x3f'][:,-1],]).T
         n_var_read = 0
         for ds_n,num in enumerate(self.h5file.attrs['NumVariables']):
             for i in range(num):
                 var = self.h5file.attrs['VariableNames'][n_var_read+i].decode("utf-8")
-                self.data_raw[var] = self.h5dic[self.h5file.attrs['DatasetNames'][ds_n].decode("utf-8")][i]
+                self.data_raw[var] = xp.asarray(self.h5dic[self.h5file.attrs['DatasetNames'][ds_n].decode("utf-8")][i])
             n_var_read += num
         return
 
@@ -179,15 +182,15 @@ class AthenaData:
     def set_coord(self):
         mb_geo, n_mbs = self.mb_geometry, self.n_mbs
         nx1, nx2, nx3 = self.nx1, self.nx2, self.nx3
-        x=np.swapaxes(np.linspace(mb_geo[:,0],mb_geo[:,1],nx1+1),0,1)
-        y=np.swapaxes(np.linspace(mb_geo[:,2],mb_geo[:,3],nx2+1),0,1)
-        z=np.swapaxes(np.linspace(mb_geo[:,4],mb_geo[:,5],nx3+1),0,1)
+        x=xp.swapaxes(xp.linspace(mb_geo[:,0],mb_geo[:,1],nx1+1),0,1)
+        y=xp.swapaxes(xp.linspace(mb_geo[:,2],mb_geo[:,3],nx2+1),0,1)
+        z=xp.swapaxes(xp.linspace(mb_geo[:,4],mb_geo[:,5],nx3+1),0,1)
         x,y,z=0.5*(x[:,:-1]+x[:,1:]),0.5*(y[:,:-1]+y[:,1:]),0.5*(z[:,:-1]+z[:,1:])
-        ZYX=np.swapaxes(np.asarray([np.meshgrid(z[i],y[i],x[i]) for i in range(n_mbs)]),0,1)
+        ZYX=xp.swapaxes(xp.asarray([xp.meshgrid(z[i],y[i],x[i]) for i in range(n_mbs)]),0,1)
         self.coord['x'],self.coord['y'],self.coord['z']=ZYX[2].swapaxes(1,2),ZYX[1].swapaxes(1,2),ZYX[0].swapaxes(1,2)
-        dx=np.asarray([np.full((nx3,nx2,nx1),(mb_geo[i,1]-mb_geo[i,0])/nx1) for i in range(n_mbs)])
-        dy=np.asarray([np.full((nx3,nx2,nx1),(mb_geo[i,3]-mb_geo[i,2])/nx2) for i in range(n_mbs)])
-        dz=np.asarray([np.full((nx3,nx2,nx1),(mb_geo[i,5]-mb_geo[i,4])/nx3) for i in range(n_mbs)])
+        dx=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,1]-mb_geo[i,0])/nx1) for i in range(n_mbs)])
+        dy=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,3]-mb_geo[i,2])/nx2) for i in range(n_mbs)])
+        dz=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,5]-mb_geo[i,4])/nx3) for i in range(n_mbs)])
         self.coord['dx'],self.coord['dy'],self.coord['dz']=dx,dy,dz
         return
 
@@ -197,10 +200,10 @@ class AthenaData:
         return
     
     def _config_data_func(self):
-        self.data_func['zeros'] = lambda self : np.zeros(self.data('dens').shape)
-        self.data_func['ones'] = lambda self : np.ones(self.data('dens').shape)
+        self.data_func['zeros'] = lambda self : xp.zeros(self.data('dens').shape)
+        self.data_func['ones'] = lambda self : xp.ones(self.data('dens').shape)
         self.data_func['vol'] = lambda self : self.data('dx')*self.data('dy')*self.data('dz')
-        self.data_func['r'] = lambda self : np.sqrt(self.data('x')**2+self.data('y')**2+self.data('z')**2)
+        self.data_func['r'] = lambda self : xp.sqrt(self.data('x')**2+self.data('y')**2+self.data('z')**2)
         self.data_func['mass'] = lambda self : self.data('vol')*self.data('dens')
         self.data_func['pres'] = lambda self : (self.gamma-1)*self.data('eint')
         self.data_func['temp'] = lambda self : (self.gamma-1)*self.data('eint')/self.data('dens')
@@ -212,11 +215,11 @@ class AthenaData:
                                                self.data('vely')*self.data('y')+\
                                                self.data('velz')*self.data('z'))/self.data('r')
         self.data_func['momr'] = lambda self : self.data('velr')*self.data('dens')
-        self.data_func['velin'] = lambda self : np.minimum(self.data('velr'),0.0)
-        self.data_func['velout'] = lambda self : np.maximum(self.data('velr'),0.0)
+        self.data_func['velin'] = lambda self : xp.minimum(self.data('velr'),0.0)
+        self.data_func['velout'] = lambda self : xp.maximum(self.data('velr'),0.0)
         self.data_func['vtot^2'] = lambda self : self.data('velx')**2+self.data('vely')**2+self.data('velz')**2
-        self.data_func['vtot'] = lambda self : np.sqrt(self.data('vtot^2'))
-        self.data_func['vrot'] = lambda self : np.sqrt(self.data('vtot^2')-self.data('velr')**2)
+        self.data_func['vtot'] = lambda self : xp.sqrt(self.data('vtot^2'))
+        self.data_func['vrot'] = lambda self : xp.sqrt(self.data('vtot^2')-self.data('velr')**2)
         self.data_func['momtot'] = lambda self : self.data('dens')*self.data('vtot')
         self.data_func['ekin'] = lambda self : 0.5*self.data('dens')*self.data('vtot^2')
         self.data_func['etot'] = lambda self : self.data('ekin')+self.data('eint')
@@ -240,8 +243,8 @@ class AthenaData:
                                                 self.data('bccy')*self.data('y')+\
                                                 self.data('bccz')*self.data('z'))/self.data('r')
         self.data_func['btot^2'] = lambda self : self.data('bccx')**2+self.data('bccy')**2+self.data('bccz')**2
-        self.data_func['btot'] = lambda self : np.sqrt(self.data('btot^2'))
-        self.data_func['brot'] = lambda self : np.sqrt(self.data('btot^2')-self.data('bccr')**2)
+        self.data_func['btot'] = lambda self : xp.sqrt(self.data('btot^2'))
+        self.data_func['brot'] = lambda self : xp.sqrt(self.data('btot^2')-self.data('bccr')**2)
         return
 
     @property
@@ -282,14 +285,14 @@ class AthenaData:
         k_min = int((xyz[4]-self.x3min)*nx3_fac)
         k_max = int((xyz[5]-self.x3min)*nx3_fac)
         # TODO(@mhguo)
-        #data = np.zeros((k_max-k_min, j_max-j_min, i_max-i_min))
-        x=np.linspace(xyz[0],xyz[1],i_max-i_min)
-        y=np.linspace(xyz[2],xyz[3],j_max-j_min)
-        z=np.linspace(xyz[4],xyz[5],k_max-k_min)
+        #data = xp.zeros((k_max-k_min, j_max-j_min, i_max-i_min))
+        x=xp.linspace(xyz[0],xyz[1],i_max-i_min)
+        y=xp.linspace(xyz[2],xyz[3],j_max-j_min)
+        z=xp.linspace(xyz[4],xyz[5],k_max-k_min)
         dx=(xyz[1]-xyz[0])/(i_max-i_min)
         dy=(xyz[3]-xyz[2])/(j_max-j_min)
         dz=(xyz[5]-xyz[4])/(k_max-k_min)
-        ZYX=np.meshgrid(z,y,x)
+        ZYX=xp.meshgrid(z,y,x)
         return ZYX[2].swapaxes(0,1),ZYX[1].swapaxes(0,1),ZYX[0].swapaxes(0,1),dx,dy,dz
 
     def uni_data(self,var,level=0,xyz=[]):
@@ -306,7 +309,7 @@ class AthenaData:
         j_max = int((xyz[3]-self.x2min)*nx2_fac)
         k_min = int((xyz[4]-self.x3min)*nx3_fac)
         k_max = int((xyz[5]-self.x3min)*nx3_fac)
-        data = np.zeros((k_max-k_min, j_max-j_min, i_max-i_min))
+        data = xp.zeros((k_max-k_min, j_max-j_min, i_max-i_min))
         raw = self.data(var)
         for nmb in range(self.n_mbs):
             block_level = self.mb_logical[nmb,-1]
@@ -341,11 +344,11 @@ class AthenaData:
                 ku_d = min(ku_d, k_max) - k_min
                 if s > 1:
                     if self.Nx1 > 1:
-                        block_data = np.repeat(block_data, s, axis=2)
+                        block_data = xp.repeat(block_data, s, axis=2)
                     if self.Nx2 > 1:
-                        block_data = np.repeat(block_data, s, axis=1)
+                        block_data = xp.repeat(block_data, s, axis=1)
                     if self.Nx3 > 1:
-                        block_data = np.repeat(block_data, s, axis=0)
+                        block_data = xp.repeat(block_data, s, axis=0)
                 data[kl_d:ku_d,jl_d:ju_d,il_d:iu_d]=block_data[kl_s:ku_s,jl_s:ju_s,il_s:iu_s]
             # Restrict fine data, volume average
             else:
@@ -410,9 +413,9 @@ class AthenaData:
     ### profile ###
     # TODO: may try to improve the performance since it is slow now
     def sum(self,var,**kwargs):
-        return np.sum(self.data(var),**kwargs)
+        return xp.sum(self.data(var),**kwargs)
     def average(self,var,weights=None,where=None,**kwargs):
-        return np.average(self.data(var)[where],weights=self.data(weights)[where],**kwargs)
+        return xp.average(self.data(var)[where],weights=self.data(weights)[where],**kwargs)
     def profile(self,bin_varl,varl,weights=None,bins=None,scales=None,where=None,**kwargs):
         if (type(bin_varl) is str):
             bin_varl = [bin_varl]
@@ -429,16 +432,19 @@ class AthenaData:
                                               (type(scales) is list and scales[i]=='log') or 
                                               (type(scales) is dict and v in scales.keys() and scales[v]=='log')
                                               )):
-                    bins[i] = np.geomspace(self.data(v)[where][self.data(v)[where]>0.0].min(),self.data(v)[where].max(),bins[i]+1)
-        norm = np.histogramdd([self.data(v)[where].ravel() for v in bin_varl],weights=weights,bins=bins,**kwargs)
-        data = {'edges':np.asarray(norm[1])}
+                    bins[i] = xp.logspace(xp.log10(self.data(v)[where][self.data(v)[where]>0.0].min()),xp.log10(self.data(v)[where].max()),bins[i]+1)
+        bins = xp.asarray(bins)
+        bin_arr = [self.data(v)[where].ravel() for v in bin_varl]
+        #print(bin_arr.shape,bins.shape)
+        norm = xp.histogramdd(bin_arr,weights=weights,bins=bins,**kwargs)
+        data = {'edges':xp.asarray(norm[1])}
         data['centers'] = (data['edges'][:,:-1]+data['edges'][:,1:])/2
         for var in varl:
             if (weights is None):
                 data_weights = self.data(var)[where].ravel()
             else:
                 data_weights = self.data(var)[where].ravel()*weights
-            data[var] = np.histogramdd([self.data(v)[where].ravel() for v in bin_varl],weights=data_weights,bins=bins,**kwargs)[0]/norm[0]
+            data[var] = xp.histogramdd(bin_arr,weights=data_weights,bins=bins,**kwargs)[0]/norm[0]
         return data
 
     ### radial profile ###
@@ -447,19 +453,19 @@ class AthenaData:
         for var in varl:
             varname = var+varsuf
             if (redo or varname not in self.rad.keys()):
-                logr = np.log10(self.data('r'))
+                logr = xp.log10(self.data('r'))
                 weinorm = self.data(weights)
-                hist = np.histogram(logr,bins=bins,weights=weinorm)
+                hist = xp.histogram(logr,bins=bins,weights=weinorm)
                 self.rad['r'] = (10**((hist[1][:-1]+hist[1][1:])/2))
                 r_range = (hist[1][0],hist[1][-1])
-                r_locs = np.logical_and(hist[0]!=0,self.rad['r'])
+                r_locs = xp.logical_and(hist[0]!=0,self.rad['r'])
                 self.rad['r'] = self.rad['r'][r_locs]
-                dr_locs = np.append(r_locs,True)
+                dr_locs = xp.append(r_locs,True)
                 self.rad['dr'] = (10**((hist[1][dr_locs])[1:])-10**((hist[1][dr_locs])[:-1]))
                 if (locs is None):
                     hist2 = hist
                 else:
-                    hist2 = np.histogram(logr[locs],range=r_range,bins=bins,weights=weinorm[locs])
+                    hist2 = xp.histogram(logr[locs],range=r_range,bins=bins,weights=weinorm[locs])
                 norm = hist2[0][r_locs]
                 self.rad['norm'+varsuf]=norm
                 break
@@ -467,9 +473,9 @@ class AthenaData:
             varname = var+varsuf
             if (redo or varname not in self.rad.keys()):
                 if (locs is None):
-                    dat = np.histogram(logr,range=r_range,bins=bins,weights=weinorm*self.data(var))
+                    dat = xp.histogram(logr,range=r_range,bins=bins,weights=weinorm*self.data(var))
                 else:
-                    dat = np.histogram(logr[locs],range=r_range,bins=bins,weights=weinorm[locs]*self.data(var)[locs])
+                    dat = xp.histogram(logr[locs],range=r_range,bins=bins,weights=weinorm[locs]*self.data(var)[locs])
                 if (var in ['mdot','mdotin','mdotout','momflx','momflxin','momflxout','ekflx','ekflxin','ekflxout']):
                     self.rad[varname] = dat[0][r_locs]/self.rad['dr']
                 else:
@@ -482,7 +488,7 @@ class AthenaData:
                    self.x2min/2**zoom,self.x2max/2**zoom,
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
         x,y,z,dx,dy,dz=self.uni_coord(level=level,xyz=xyz)
-        return np.average(x,axis=axis),np.average(y,axis=axis),np.average(z,axis=axis),xyz
+        return xp.average(x,axis=axis),xp.average(y,axis=axis),xp.average(z,axis=axis),xyz
 
     # TODO(@mhguo): we should have the ability to get slice at any position with any direction
     def get_slice(self,var='dens',zoom=0,level=0,xyz=[],axis=0):
@@ -490,7 +496,7 @@ class AthenaData:
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
                    self.x2min/2**zoom,self.x2max/2**zoom,
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
-        return np.average(self.uni_data(var,level=level,xyz=xyz),axis=axis),xyz
+        return xp.average(self.uni_data(var,level=level,xyz=xyz),axis=axis),xyz
     
     #def get_slice(self,var='dens',normal='z',north='y',center=[0.,0.,0.],width=1,height=1,zoom=0,level=0):
     #    return
@@ -514,14 +520,14 @@ class AthenaData:
             varname = var+varsuf
             if (redo or varname not in self.dist.keys()):
                 if (scale=='log'):
-                    data = np.log10(self.data(var))
+                    data = xp.log10(self.data(var))
                 else:
                     data = self.data(var)
-                np.nan_to_num(data, copy=False, posinf=0.0, neginf=0.0)
+                xp.nan_to_num(data, copy=False, posinf=0.0, neginf=0.0)
                 if (locs is None):
-                    dat = np.histogram(data,bins=bins,weights=weinorm)
+                    dat = xp.histogram(data,bins=bins,weights=weinorm)
                 else:
-                    dat = np.histogram(data[locs],bins=bins,weights=weinorm[locs])
+                    dat = xp.histogram(data[locs],bins=bins,weights=weinorm[locs])
                 self.dist[varname] = {}
                 self.dist[varname]['dat'] = dat[0]
                 self.dist[varname]['loc'] = dat[1]
@@ -536,15 +542,15 @@ class AthenaData:
                 dats=[None,None]
                 for i,var in enumerate(varl):
                     if (scales[i]=='log'):
-                        dats[i] = np.log10(self.data(var))
+                        dats[i] = xp.log10(self.data(var))
                     else:
                         dats[i] = self.data(var)
-                    np.nan_to_num(dats[i], copy=False, posinf=0.0, neginf=0.0)
+                    xp.nan_to_num(dats[i], copy=False, posinf=0.0, neginf=0.0)
                 if (locs is None):
-                    dat = np.histogram2d(dats[0].ravel(),dats[1].ravel(),bins=bins,\
+                    dat = xp.histogram2d(dats[0].ravel(),dats[1].ravel(),bins=bins,\
                         weights=weinorm.ravel())
                 else:
-                    dat = np.histogram2d(dats[0][locs],dats[1][locs],bins=bins,\
+                    dat = xp.histogram2d(dats[0][locs],dats[1][locs],bins=bins,\
                         weights=weinorm[locs])
                 self.dist2d[varname] = {}
                 self.dist2d[varname]['dat'] = dat[0]
@@ -560,7 +566,7 @@ class AthenaData:
                    stream_arrowsize=None,vecx='velx',vecy='vely',vel_method='ave',axis=0,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
-        bins=int(np.min([self.Nx1,self.Nx2,self.Nx3])) if not bins else bins
+        bins=int(xp.min([self.Nx1,self.Nx2,self.Nx3])) if not bins else bins
         varname = var+f'_{zoom}' if not varname else varname
         if (not xyz):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
@@ -590,9 +596,9 @@ class AthenaData:
             fac=max(int(2**(level-vec)),1)
             if (vel_method=='ave'):
                 n0,n1=int(u.shape[0]/fac),int(u.shape[1]/fac)
-                u=np.average(u.reshape(n0,fac,n1,fac),axis=(1,3))
+                u=xp.average(u.reshape(n0,fac,n1,fac),axis=(1,3))
                 n0,n1=int(v.shape[0]/fac),int(v.shape[1]/fac)
-                v=np.average(v.reshape(n0,fac,n1,fac),axis=(1,3))
+                v=xp.average(v.reshape(n0,fac,n1,fac),axis=(1,3))
             else:
                 u=u[int(fac/2)::fac,int(fac/2)::fac]
                 v=v[int(fac/2)::fac,int(fac/2)::fac]
@@ -609,9 +615,9 @@ class AthenaData:
                 v = self.slice[f'{vecy}_{zoom}']['dat']
             else:
                 v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
-            #x,y=np.meshgrid(x,y)
-            #z,x=np.meshgrid(z,x)
-            #np.mgrid[-w:w:100j, -w:w:100j]
+            #x,y=xp.meshgrid(x,y)
+            #z,x=xp.meshgrid(z,x)
+            #xp.mgrid[-w:w:100j, -w:w:100j]
             #beg=8
             #step=16
             #ax.streamplot(x[beg::step,beg::step], z[beg::step,beg::step], (u[0]/norm[0])[beg::step,beg::step], (v[0]/norm[0])[beg::step,beg::step])
@@ -626,7 +632,7 @@ class AthenaData:
         im=ax.imshow(slc[::-1,:],extent=(x0*xyunit,x1*xyunit,y0*xyunit,y1*xyunit),\
             norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(slc.swapaxes(0,1)[::-1,:],extent=(x0,x1,y0,y1),norm=norm,cmap=cmap,**kwargs)
-        #im=ax.imshow(np.rot90(data),cmap='plasma',norm=LogNorm(0.9e-1,1.1e1),extent=extent)
+        #im=ax.imshow(xp.rot90(data),cmap='plasma',norm=LogNorm(0.9e-1,1.1e1),extent=extent)
         if(circle and self.header('problem','r_in')):
             ax.add_patch(plt.Circle((0,0),float(self.header('problem','r_in')),ec='k',fc='#00000000'))
         ax.set_xlabel(xlabel)
