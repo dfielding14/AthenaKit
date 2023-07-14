@@ -5,6 +5,15 @@ except ImportError:
 from numpy.linalg import inv
 from ... import athenakit as ak
 
+bhmass_msun = 6.5e9
+mu = 0.618
+bhmass_cgs = bhmass_msun * ak.msun_cgs
+length_cgs_ = ak.grav_constant_cgs*bhmass_cgs/(ak.speed_of_light_cgs)**2
+time_cgs_ = length_cgs_/ak.speed_of_light_cgs
+density_scale = mu*ak.atomic_mass_unit_cgs
+mass_cgs_ = density_scale*(length_cgs_**3)
+unit=grunit=ak.Units(lunit=length_cgs_,munit=mass_cgs_,tunit=time_cgs_,mu=mu)
+
 def add_tools(ad):
     mu = ad.header('units','mu',float)
     bhmass_msun = ad.header('units','bhmass_msun',float)
@@ -24,16 +33,21 @@ def add_tools(ad):
     return
 
 def add_tran(ad):
-    jx=ad.average('jx',where=ad.data('temp')<ad.header('problem','t_cold',float),weights='mass')
-    jy=ad.average('jy',where=ad.data('temp')<ad.header('problem','t_cold',float),weights='mass')
-    jz=ad.average('jz',where=ad.data('temp')<ad.header('problem','t_cold',float),weights='mass')
+    where=ad.data('temp')<ad.header('problem','t_cold',float)
+    if (where.any()):
+        jx=ad.average('jx',where=where,weights='mass')
+        jy=ad.average('jy',where=where,weights='mass')
+        jz=ad.average('jz',where=where,weights='mass')
+    else:
+        jx, jy, jz = 0.0, 0.0, 1.0
     def normal(vec):
         return vec/xp.sqrt(xp.sum(vec**2))
     disk_z = normal(xp.array([jx,jy,jz]))
-    y_12=xp.asarray([0,1])
-    disk_y=normal(xp.array([(-y_12[0]*disk_z[1]-y_12[1]*disk_z[2])/disk_z[0],y_12[0],y_12[1]]))
+    y_01=xp.asarray([0,1])
+    disk_y=normal(xp.array([y_01[0],y_01[1],(-y_01[0]*disk_z[0]-y_01[1]*disk_z[1])/disk_z[2]]))
     disk_x=normal(xp.cross(disk_y,disk_z))
     ad.tran=inv(xp.stack((disk_x,disk_y,disk_z)).T)
+    return
 
 def add_data(ad,add_bcc=True):
     if ('bcc1' not in ad.data_raw.keys()) and add_bcc:
@@ -78,3 +92,7 @@ def add_data(ad,add_bcc=True):
     ad.add_data_func('tran_stress_Rphi_maxwell/R', lambda sf : sf.data('tran_stress_Rphi_maxwell')/sf.data('tran_R'))
     ad.add_data_func('tran_stress_Rphi/R', lambda sf : sf.data('tran_stress_Rphi')/sf.data('tran_R'))
 
+    for var in ['mdot','mdotin','mdotout','momdot','momdotin','momdotout','ekdot','ekdotin','ekdotout']:
+        ad.add_data_func(var, lambda sf, var=var : 4.0*xp.pi*sf.data('r')**2*sf.data(var.replace('dot','flxr')))
+
+    return
