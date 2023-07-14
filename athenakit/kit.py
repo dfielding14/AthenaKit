@@ -10,74 +10,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import interp1d as sp_interp1d
 
 from . import io
-
-# units
-cm_cgs = 1.0;                           # cm
-pc_cgs = 3.0856775809623245e+18;        # cm
-kpc_cgs = 3.0856775809623245e+21;       # cm
-g_cgs = 1.0;                            # g
-msun_cgs = 1.98841586e+33;              # g
-atomic_mass_unit_cgs = 1.660538921e-24; # g
-s_cgs = 1.0;                            # s
-yr_cgs = 3.15576e+7;                    # s
-myr_cgs = 3.15576e+13;                  # s
-cm_s_cgs = 1.0;                         # cm/s
-km_s_cgs = 1.0e5;                       # cm/s
-g_cm3_cgs = 1.0;                        # g/cm^3
-erg_cgs = 1.0;                          # erg
-dyne_cm2_cgs = 1.0;                     # dyne/cm^2  
-kelvin_cgs = 1.0;                       # k
-k_boltzmann_cgs = 1.3806488e-16;        # erg/k
-grav_constant_cgs = 6.67408e-8;         # cm^3/(g*s^2)
-speed_of_light_cgs = 2.99792458e10      # cm/s
-
-class Units:
-    def __init__(self,lunit=pc_cgs,munit=atomic_mass_unit_cgs*pc_cgs**3,tunit=myr_cgs,mu=1.0):
-        self.length_cgs=lunit
-        self.mass_cgs=munit
-        self.time_cgs=tunit
-        self.mu=mu
-    @property
-    def velocity_cgs(self):
-        return self.length_cgs/self.time_cgs
-    @property
-    def density_cgs(self):
-        return self.mass_cgs/self.length_cgs**3
-    @property
-    def energy_cgs(self):
-        return self.mass_cgs*self.velocity_cgs**2
-    @property
-    def pressure_cgs(self):
-        return self.energy_cgs/self.length_cgs**3
-    @property
-    def temperature_cgs(self):
-        return self.velocity_cgs**2*self.mu*atomic_mass_unit_cgs/k_boltzmann_cgs
-    @property
-    def grav_constant(self):
-        return grav_constant_cgs*self.density_cgs*self.time_cgs**2
-    @property
-    def speed_of_light(self):
-        return speed_of_light_cgs/self.velocity_cgs
-    @property
-    def number_density_cgs(self):
-        return self.density_cgs/self.mu/atomic_mass_unit_cgs
-    @property
-    def cooling_cgs(self):
-        return self.pressure_cgs/self.time_cgs/self.number_density_cgs**2
-    @property
-    def heating_cgs(self):
-        return self.pressure_cgs/self.time_cgs/self.number_density_cgs
-    @property
-    def conductivity_cgs(self):
-        return self.pressure_cgs*self.velocity_cgs*self.length_cgs/self.temperature_cgs
-    @property
-    def entropy_kevcm2(self):
-        kev_erg=1.60218e-09
-        gamma=5./3.
-        return self.pressure_cgs/kev_erg/self.number_density_cgs**gamma
-    @property
-    def magnetic_field_cgs(self):
-        return np.sqrt(4.0*np.pi*self.density_cgs)*self.velocity_cgs
+from .units import *
 
 mu=0.618
 unit=Units(lunit=kpc_cgs,munit=mu*atomic_mass_unit_cgs*kpc_cgs**3,mu=mu)
