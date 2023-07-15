@@ -1,30 +1,49 @@
+import numpy as np
 try:
     import cupy as xp
 except ImportError:
     import numpy as xp
 from numpy.linalg import inv
-from ... import athenakit as ak
+from .. import units
+from .. import kit
 
 bhmass_msun = 6.5e9
 mu = 0.618
-bhmass_cgs = bhmass_msun * ak.msun_cgs
-length_cgs_ = ak.grav_constant_cgs*bhmass_cgs/(ak.speed_of_light_cgs)**2
-time_cgs_ = length_cgs_/ak.speed_of_light_cgs
-density_scale = mu*ak.atomic_mass_unit_cgs
+bhmass_cgs = bhmass_msun * units.msun_cgs
+length_cgs_ = units.grav_constant_cgs*bhmass_cgs/(units.speed_of_light_cgs)**2
+time_cgs_ = length_cgs_/units.speed_of_light_cgs
+density_scale = mu*units.atomic_mass_unit_cgs
 mass_cgs_ = density_scale*(length_cgs_**3)
-unit=grunit=ak.Units(lunit=length_cgs_,munit=mass_cgs_,tunit=time_cgs_,mu=mu)
+unit=grunit=units.Units(lunit=length_cgs_,munit=mass_cgs_,tunit=time_cgs_,mu=mu)
+
+##############################################################
+# Solar metallicity
+# H, He, C, N, O, Ne, Na, Mg, Al, Si, S, Ar, Ca, Fe, Ni
+atom_number=np.array([1,2,6,7,8,10,11,12,13,14,16,18,20,26,28]) # atomic number
+atom_mass=np.array([1.00784,4.0026,12,14,16,20,23,24,27,28,32,40,40,56,58]) # Atomic mass
+# From Schure et al. 2009 A&A 508, 751
+logni=np.array([0,-1.01,-3.44,-3.95,-3.07,-3.91,-5.67,-4.42,-5.53,-4.45,-4.79,-5.44,-5.64,-4.33,-5.75])
+n_i=10**logni # ion number density
+n_e=n_i*atom_number # electron number density
+n_t=n_i+n_e  # total number density
+n_t_h_ratio=n_t.sum()
+n_e_h_ratio=n_e.sum()
+n_i_h_ratio=n_i.sum()
+n_t_e_ratio=n_t_h_ratio/n_e_h_ratio
+n_t_i_ratio=n_t_h_ratio/n_i_h_ratio
+##############################################################
 
 def add_tools(ad):
     mu = ad.header('units','mu',float)
     bhmass_msun = ad.header('units','bhmass_msun',float)
-    bhmass_cgs = bhmass_msun * ak.msun_cgs
-    length_cgs_ = ak.grav_constant_cgs*bhmass_cgs/(ak.speed_of_light_cgs)**2
-    time_cgs_ = length_cgs_/ak.speed_of_light_cgs
-    density_scale = mu*ak.atomic_mass_unit_cgs
+    bhmass_cgs = bhmass_msun * units.msun_cgs
+    length_cgs_ = units.grav_constant_cgs*bhmass_cgs/(units.speed_of_light_cgs)**2
+    time_cgs_ = length_cgs_/units.speed_of_light_cgs
+    density_scale = mu*units.atomic_mass_unit_cgs
     mass_cgs_ = density_scale*(length_cgs_**3)
-    ad.unit=ak.Units(lunit=length_cgs_,munit=mass_cgs_,tunit=time_cgs_,mu=mu)
+    ad.unit=units.Units(lunit=length_cgs_,munit=mass_cgs_,tunit=time_cgs_,mu=mu)
 
-    ad.accel = lambda x: -ak.Acceleration(x,m=ad.header('problem','m_bh',float),
+    ad.accel = lambda x: -kit.Acceleration(x,m=ad.header('problem','m_bh',float),
                             mc=ad.header('problem','m_star',float),
                             rc=ad.header('problem','r_star',float),
                             ms=ad.header('problem','m_dm',float),
