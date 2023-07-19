@@ -16,7 +16,14 @@ mu=0.618
 unit=Units(lunit=kpc_cgs,munit=mu*atomic_mass_unit_cgs*kpc_cgs**3,mu=mu)
 
 # Convert all binary files in binary path to athdf files in athdf path
-def bin_to_athdf(binpath,athdfpath,overwrite=False):
+def bin_to_athdf(binary_fname,athdf_fname):
+    xdmf_fname = athdf_fname + ".xdmf"
+    filedata = io.read_binary(binary_fname)
+    io.write_athdf(athdf_fname, filedata)
+    io.write_xdmf_for(xdmf_fname, os.path.basename(athdf_fname), filedata)
+    return
+
+def bins_to_athdfs(binpath,athdfpath,overwrite=False,info=True):
     if not os.path.isdir(athdfpath):
         os.mkdir(athdfpath)
     for file in sorted(os.listdir(binpath)):
@@ -25,12 +32,12 @@ def bin_to_athdf(binpath,athdfpath,overwrite=False):
             athdf_fname = os.path.join(athdfpath, file.replace(".bin", ".athdf"))
             xdmf_fname = athdf_fname + ".xdmf"
             if (overwrite or not os.path.exists(athdf_fname) or not os.path.exists(xdmf_fname)):
-                print(f"Converting {file}")
+                if (info): print(f"Converting {file}")
                 filedata = io.read_binary(binary_fname)
                 io.write_athdf(athdf_fname, filedata)
                 io.write_xdmf_for(xdmf_fname, os.path.basename(athdf_fname), filedata)
             else:
-                print(f"Skipping {file}")
+                if (info): print(f"Skipping {file}")
     return
 
 @np.vectorize
@@ -494,7 +501,7 @@ def figure(nrows=1,ncols=1,figsize=(6.4,4.8),dpi=120,sharex=True,squeeze=False,\
             ax.yaxis.set_label_position("right")
             ax.yaxis.tick_right()
     return fig,ax
-def subplots(nrows=2,ncols=2,figsize=(7.2,5.0),dpi=120,sharex=True,squeeze=False,\
+def subplots(nrows=2,ncols=2,figsize=(7.2,5.0),dpi=120,sharex=False,squeeze=False,\
     constrained_layout=False,top=0.94, bottom=0.1,left=0.125, right=0.9, 
     wspace=0.02, hspace=0.0,raw=False,**kwargs):
     fig, axes = plt.subplots(nrows,ncols,figsize=figsize,dpi=dpi,sharex=sharex,\

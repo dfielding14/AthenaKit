@@ -1,9 +1,13 @@
 import os
 from pathlib import Path
+import numpy as np
+global cupy_enabled
 try:
     import cupy as xp
+    cupy_enabled = True
 except ImportError:
     import numpy as xp
+    cupy_enabled = False
 import h5py
 import pickle
 import warnings
@@ -19,6 +23,12 @@ def load(filename):
     ad.load(filename,config=True)
     return ad
 
+def asnumpy(arr):
+    if (cupy_enabled):
+        return xp.asnumpy(arr)
+    else:
+        return arr
+
 class AthenaData:
     def __init__(self,num=0,version='1.0'):
         self.num=num
@@ -28,11 +38,11 @@ class AthenaData:
         self.coord={}
         self.data_raw={}
         self.data_func={}
-        self.hist={} # TODO(@mhguo): change to sum?
-        self.rad={}
-        self.slice={}
-        self.dist={}
-        self.dist2d={}
+        self.sums={}
+        self.avgs={}
+        self.hists={}
+        self.profs={}
+        self.slices={}
         self.spectra={}
         return
     
@@ -51,6 +61,8 @@ class AthenaData:
         elif (filename.endswith('.pkl')):
             self.hdf5_name = filename
             self.load_pickle(filename,**kwargs)
+        else:
+            raise ValueError(f"Unknown file type: {filename.split('.')[-1]}")
         if (config):
             self.config()
         return
@@ -60,8 +72,11 @@ class AthenaData:
              **kwargs):
         dic={}
         for k,v in self.__dict__.items():
-            if (k not in except_keys+default_except_keys):
-                dic[k]=v
+            if (k not in except_keys+default_except_keys and not callable(v)):
+                if(type(v) in [xp.ndarray]):
+                    dic[k]=asnumpy(v)
+                else:
+                    dic[k]=v
         if (filename.endswith(('.h5','.hdf5'))):
             self.save_hdf5(dic,filename,**kwargs)
         elif (filename.endswith(('.p','.pkl'))):
@@ -223,19 +238,19 @@ class AthenaData:
         self.data_func['momtot'] = lambda self : self.data('dens')*self.data('vtot')
         self.data_func['ekin'] = lambda self : 0.5*self.data('dens')*self.data('vtot^2')
         self.data_func['etot'] = lambda self : self.data('ekin')+self.data('eint')
-        self.data_func['jx'] = lambda self : self.data('y')*self.data('velz')-self.data('z')*self.data('vely')
-        self.data_func['jy'] = lambda self : self.data('z')*self.data('velx')-self.data('x')*self.data('velz')
-        self.data_func['jz'] = lambda self : self.data('x')*self.data('vely')-self.data('y')*self.data('velx')
+        self.data_func['amx'] = lambda self : self.data('y')*self.data('velz')-self.data('z')*self.data('vely')
+        self.data_func['amy'] = lambda self : self.data('z')*self.data('velx')-self.data('x')*self.data('velz')
+        self.data_func['amz'] = lambda self : self.data('x')*self.data('vely')-self.data('y')*self.data('velx')
         self.data_func['amtot'] = lambda self : self.data('r')*self.data('vrot')
-        self.data_func['mdot'] = lambda self : self.data('dens')*self.data('velr')
-        self.data_func['mdotin'] = lambda self : self.data('dens')*self.data('velin')
-        self.data_func['mdotout'] = lambda self : self.data('dens')*self.data('velout')
-        self.data_func['momflx'] = lambda self : self.data('dens')*self.data('velr')*self.data('velr')
-        self.data_func['momflxin'] = lambda self : self.data('dens')*self.data('velr')*self.data('velin')
-        self.data_func['momflxout'] = lambda self : self.data('dens')*self.data('velr')*self.data('velout')
-        self.data_func['ekflx'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velr')
-        self.data_func['ekflxin'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velin')
-        self.data_func['ekflxout'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velout')
+        self.data_func['mflxr'] = lambda self : self.data('dens')*self.data('velr')
+        self.data_func['mflxrin'] = lambda self : self.data('dens')*self.data('velin')
+        self.data_func['mflxrout'] = lambda self : self.data('dens')*self.data('velout')
+        self.data_func['momflxr'] = lambda self : self.data('dens')*self.data('velr')**2
+        self.data_func['momflxrin'] = lambda self : self.data('dens')*self.data('velr')*self.data('velin')
+        self.data_func['momflxrout'] = lambda self : self.data('dens')*self.data('velr')*self.data('velout')
+        self.data_func['ekflxr'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velr')
+        self.data_func['ekflxrin'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velin')
+        self.data_func['ekflxrout'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velout')
         self.data_func['bccx'] = lambda self : self.data('bcc1')
         self.data_func['bccy'] = lambda self : self.data('bcc2')
         self.data_func['bccz'] = lambda self : self.data('bcc3')
@@ -269,9 +284,9 @@ class AthenaData:
         else:
             return var
 
-    ### uniform data ###
+    ### get data in a single array ###
     # TODO(@mhguo): deal with the cell center and cell edge issue
-    def uni_coord(self,level=0,xyz=[]):
+    def get_refined_coord(self,level=0,xyz=[]):
         if (not xyz):
             xyz = [self.x1min,self.x1max,self.x2min,self.x2max,self.x3min,self.x3max]
         # level is physical level
@@ -295,7 +310,7 @@ class AthenaData:
         ZYX=xp.meshgrid(z,y,x)
         return ZYX[2].swapaxes(0,1),ZYX[1].swapaxes(0,1),ZYX[0].swapaxes(0,1),dx,dy,dz
 
-    def uni_data(self,var,level=0,xyz=[]):
+    def get_refined_data(self,var,level=0,xyz=[]):
         if (not xyz):
             xyz = [self.x1min,self.x1max,self.x2min,self.x2max,self.x3min,self.x3max]
         # block_level is physical level of mesh refinement
@@ -410,84 +425,240 @@ class AthenaData:
                                                                 /(s**num_extended_dims)
         return data
     
-    ### profile ###
     # TODO: may try to improve the performance since it is slow now
     def sum(self,var,**kwargs):
-        return xp.sum(self.data(var),**kwargs)
+        return asnumpy(xp.sum(self.data(var),**kwargs))
     def average(self,var,weights=None,where=None,**kwargs):
-        return xp.average(self.data(var)[where],weights=self.data(weights)[where],**kwargs)
-    def profile(self,bin_varl,varl,weights=None,bins=None,scales=None,where=None,**kwargs):
-        if (type(bin_varl) is str):
-            bin_varl = [bin_varl]
+        return asnumpy(xp.average(self.data(var)[where],weights=self.data(weights)[where],**kwargs))
+    def histogramdd(self,varl,bins=10,weights=None,scales='linear',where=None,**kwargs):
+        """
+        Compute the histogram of variables
+
+        Parameters
+        ----------
+        varl : list of str
+            varaible list
+
+        Returns
+        -------
+        hist : dict
+            dictionary of distributions
+        """
         if (type(varl) is str):
             varl = [varl]
         if (type(weights) is str):
             weights = self.data(weights)[where].ravel()
-        if (scales):
-            if (type(bins) is int):
-                n_bins = bins
-                bins = [n_bins for v in bin_varl]
-            for i,v in enumerate(bin_varl):
-                if (type(bins[i]) is int and ((type(scales) is str and scales=='log') or
-                                              (type(scales) is list and scales[i]=='log') or 
-                                              (type(scales) is dict and v in scales.keys() and scales[v]=='log')
-                                              )):
-                    bins[i] = xp.logspace(xp.log10(self.data(v)[where][self.data(v)[where]>0.0].min()),xp.log10(self.data(v)[where].max()),bins[i]+1)
+        if (type(scales) is str):
+            scales = [scales]*len(varl)
+
+        hist = {}
+        bins_0 = bins
+            
+        arr = [self.data(v)[where].ravel() for v in varl]
+        histname = '_'.join(varl)
+        # get bins
+        bins = [bins_0]*len(varl)
+        scale = [scale]*len(varl) if (type(scale) is str) else scale
+        for i,v,scal in zip(range(len(varl)),varl,scale):
+            if(scal=='linear'):
+                bins[i] = xp.linspace(self.data(v)[where].min(),self.data(v)[where].max(),bins[i]+1)
+            elif(scal=='log'):
+                bins[i] = xp.logspace(xp.log10(self.data(v)[where][self.data(v)[where]>0.0].min()),xp.log10(self.data(v)[where].max()),bins[i]+1)
+            else:
+                raise ValueError(f"scale '{scal}' not supported")
+        bins = xp.asarray(bins)
+        # get histogram
+        histogram = xp.histogramdd(arr,bins=bins,weights=weights,**kwargs)
+        hist = {'dat':xp.asarray(histogram[0]),'edges':xp.asarray(hist[1])}
+        hist['centers'] = (hist['edges'][:,:-1]+hist['edges'][:,1:])/2
+        for k in hist.keys():
+            hist[k] = asnumpy(hist[k])
+        
+        return hist
+
+    # TODO(@mhguo): add range!
+    def _histogramdd(self,varll,bins=10,weights=None,scales='linear',where=None,**kwargs):
+        """
+        Compute the histogram of a list of variables
+
+        Parameters
+        ----------
+        varl : list of list of str
+            varaible list
+
+        Returns
+        -------
+        hist : dict
+            dictionary of distributions
+        """
+        if (type(varll) is str):
+            varll = [varll]
+        for i,varl in enumerate(varll):
+            if (type(varl) is str):
+                varll[i] = [varl]
+        if (type(weights) is str):
+            weights = self.data(weights)[where].ravel()
+        if (type(scales) is str):
+            scales = [scales]*len(varll)
+
+        hists = {}
+        bins_0 = bins
+        for varl,scale in zip(varll,scales):
+            arr = [self.data(v)[where].ravel() for v in varl]
+            histname = '_'.join(varl)
+            # get bins
+            bins = [bins_0]*len(varl)
+            scale = [scale]*len(varl) if (type(scale) is str) else scale
+            for i,v,scal in zip(range(len(varl)),varl,scale):
+                if(scal=='linear'):
+                    bins[i] = xp.linspace(self.data(v)[where].min(),self.data(v)[where].max(),bins[i]+1)
+                elif(scal=='log'):
+                    try:
+                        bins[i] = xp.logspace(xp.log10(self.data(v)[where][self.data(v)[where]>0.0].min()),xp.log10(self.data(v)[where].max()),bins[i]+1)
+                    except Exception as ex:
+                        print(f"Warning: {ex}, using linear scale instead")
+                        bins[i] = xp.linspace(self.data(v)[where].min(),self.data(v)[where].max(),bins[i]+1)
+                else:
+                    raise ValueError(f"scale '{scal}' not supported")
+            bins = xp.asarray(bins)
+            # get histogram
+            hist = xp.histogramdd(arr,bins=bins,weights=weights,**kwargs)
+            hists[histname] = {'dat':xp.asarray(hist[0]),'edges':xp.asarray(hist[1])}
+            hists[histname]['centers'] = (hists[histname]['edges'][:,:-1]+hists[histname]['edges'][:,1:])/2
+            for k in hists[histname].keys():
+                hists[histname][k] = asnumpy(hists[histname][k])
+        return hists
+
+    def _profile(self,bin_varl,varl,bins=10,range=None,weights=None,scales='linear',where=None,**kwargs):
+        """
+        Compute the profile of a (list of) variable with respect to one or more bin variables.
+
+        Parameters
+        ----------
+        bin_varl : str or list of str
+            bin varaible list
+        
+        varl : str or list of str
+            variable list
+
+        Returns
+        -------
+        profs : dict
+            dictionary of profiles
+        """
+        if (type(bin_varl) is str):
+            bin_varl = [bin_varl]
+        if (type(varl) is str):
+            varl = [varl]
+        if (type(bins) is int):
+            bins = [bins]*len(bin_varl)
+        if (type(weights) is str):
+            weights = self.data(weights)[where].ravel()
+        if (type(scales) is str):
+            scales = [scales]*len(bin_varl)
+        for i,v in enumerate(bin_varl):
+            scale = scales[i]
+            if (type(bins[i]) is int):
+                if (scale=='linear'):
+                    if (range is None):
+                        bins[i] = xp.linspace(self.data(v)[where].min(),self.data(v)[where].max(),bins[i]+1)
+                    else:
+                        bins[i] = xp.linspace(range[i][0],range[i][1],bins[i]+1)
+                elif (scale=='log'):
+                    if (range is None):
+                        bins[i] = xp.logspace(xp.log10(self.data(v)[where][self.data(v)[where]>0.0].min()),
+                                            xp.log10(self.data(v)[where].max()),bins[i]+1)
+                    else:
+                        bins[i] = xp.logspace(xp.log10(range[i][0]),xp.log10(range[i][1]),bins[i]+1)
+                else:
+                    raise ValueError(f"scale '{scale}' not supported")
         bins = xp.asarray(bins)
         bin_arr = [self.data(v)[where].ravel() for v in bin_varl]
-        #print(bin_arr.shape,bins.shape)
-        norm = xp.histogramdd(bin_arr,weights=weights,bins=bins,**kwargs)
-        data = {'edges':xp.asarray(norm[1])}
-        data['centers'] = (data['edges'][:,:-1]+data['edges'][:,1:])/2
+        norm = xp.histogramdd(bin_arr,bins=bins,weights=weights,**kwargs)
+        profs = {'edges':xp.asarray(norm[1]),'norm':xp.asarray(norm[0])}
+        profs['centers'] = (profs['edges'][:,:-1]+profs['edges'][:,1:])/2
+        for var in bin_varl:
+            profs[var] = profs['centers'][bin_varl.index(var)]
         for var in varl:
             if (weights is None):
                 data_weights = self.data(var)[where].ravel()
             else:
                 data_weights = self.data(var)[where].ravel()*weights
-            data[var] = xp.histogramdd(bin_arr,weights=data_weights,bins=bins,**kwargs)[0]/norm[0]
-        return data
+            profs[var] = xp.histogramdd(bin_arr,bins=bins,weights=data_weights,**kwargs)[0]/norm[0]
+        for k in profs.keys():
+            profs[k] = asnumpy(profs[k])
+        return profs
 
-    ### radial profile ###
-    def set_radial(self,varl=['dens','temp','velr','mdot'],varsuf='',bins=1000,\
-        locs=None,weights='vol',redo=False):
-        for var in varl:
-            varname = var+varsuf
-            if (redo or varname not in self.rad.keys()):
-                logr = xp.log10(self.data('r'))
-                weinorm = self.data(weights)
-                hist = xp.histogram(logr,bins=bins,weights=weinorm)
-                self.rad['r'] = (10**((hist[1][:-1]+hist[1][1:])/2))
-                r_range = (hist[1][0],hist[1][-1])
-                r_locs = xp.logical_and(hist[0]!=0,self.rad['r'])
-                self.rad['r'] = self.rad['r'][r_locs]
-                dr_locs = xp.append(r_locs,True)
-                self.rad['dr'] = (10**((hist[1][dr_locs])[1:])-10**((hist[1][dr_locs])[:-1]))
-                if (locs is None):
-                    hist2 = hist
-                else:
-                    hist2 = xp.histogram(logr[locs],range=r_range,bins=bins,weights=weinorm[locs])
-                norm = hist2[0][r_locs]
-                self.rad['norm'+varsuf]=norm
-                break
-        for var in varl:
-            varname = var+varsuf
-            if (redo or varname not in self.rad.keys()):
-                if (locs is None):
-                    dat = xp.histogram(logr,range=r_range,bins=bins,weights=weinorm*self.data(var))
-                else:
-                    dat = xp.histogram(logr[locs],range=r_range,bins=bins,weights=weinorm[locs]*self.data(var)[locs])
-                if (var in ['mdot','mdotin','mdotout','momflx','momflxin','momflxout','ekflx','ekflxin','ekflxout']):
-                    self.rad[varname] = dat[0][r_locs]/self.rad['dr']
-                else:
-                    self.rad[varname] = dat[0][r_locs]/norm
-        return
+    ### get data in a dictionary ###
+    def histogram(self,*args,**kwargs):
+        hists = self._histogramdd(*args,**kwargs)
+        for k in hists.keys():
+            hists[k]['edges'] = hists[k]['edges'][0]
+            hists[k]['centers'] = hists[k]['centers'][0]
+        return hists
+    def histogram2d(self,*args,**kwargs):
+        return self._histogramdd(*args,**kwargs)
+    
+    def get_sum(self,varl,*args,**kwargs):
+        varl = [varl] if (type(varl) is str) else varl
+        return {var : self.sum(var,*args,**kwargs) for var in varl}
+    def get_avg(self,varl,*args,**kwargs):
+        varl = [varl] if (type(varl) is str) else varl
+        return {var : self.average(var,*args,**kwargs) for var in varl}
+    def set_sum(self,*args,**kwargs):
+        self.sums.update(self.get_sum(*args,**kwargs))
+    def set_avg(self,*args,**kwargs):
+        self.avgs.update(self.get_avg(*args,**kwargs))
+
+    def get_hist(self,varl,bins=128,scales='log',weights='vol',**kwargs):
+        return self.histogram(varl,bins=bins,scales=scales,weights=weights,**kwargs)
+    def get_hist2d(self,varl,bins=128,scales='log',weights='vol',**kwargs):
+        return self.histogram2d(varl,bins=bins,scales=scales,weights=weights,**kwargs)
+    def get_profile(self,bin_var,varl,bins=256,weights='vol',**kwargs):
+        return self._profile(bin_var,varl,bins=bins,weights=weights,**kwargs)
+    def get_profile2d(self,bin_varl,varl,bins=256,weights='vol',**kwargs):
+        return self._profile(bin_varl,varl,bins=bins,weights=weights,**kwargs)
+
+    def set_hist(self,varl,key=None,bins=128,scales='log',weights='vol',**kwargs):
+        key = weights if key is None else key
+        if key not in self.hists.keys():
+            self.hists[key] = {}
+        self.hists[key].update(self.get_hist(varl,bins=bins,scales=scales,weights=weights,**kwargs))
+    def set_hist2d(self,varl,key=None,bins=128,scales='log',weights='vol',**kwargs):
+        key = weights if key is None else key
+        if key not in self.hists.keys():
+            self.hists[key] = {}
+        self.hists[key].update(self.get_hist2d(varl,bins=bins,scales=scales,weights=weights,**kwargs))
+
+    def set_profile(self,bin_var,varl,key=None,bins=256,weights='vol',**kwargs):
+        key = bin_var if key is None else key
+        if key not in self.profs.keys():
+            self.profs[key] = {}
+        self.profs[key].update(self.get_profile(bin_var,varl,bins=bins,weights=weights,**kwargs))
+    def set_profile2d(self,bin_varl,varl,key=None,bins=256,weights='vol',**kwargs):
+        key = '_'.join(bin_varl) if key is None else key
+        if key not in self.profs.keys():
+            self.profs[key] = {}
+        self.profs[key].update(self.get_profile2d(bin_varl,varl,bins=bins,weights=weights,**kwargs))
+
+    # TODO(@mhguo): use profile 2d now, need to change to a real slice!
+    def set_slice(self,bin_varl,varl,key=None,**kwargs):
+        key = 'z' if key is None else key
+        if key not in self.slices.keys():
+            self.slices[key] = {}
+        self.slices[key].update(self.get_profile2d(bin_varl,varl,**kwargs))
+
+    #def get_radial(self,varl=['dens','temp','velr','mflxr'],bins=256,scales='log',weights='vol',**kwargs):
+    #    return self._profile(['r'],varl,bins=bins,scales=scales,weights=weights,**kwargs)
+    #def set_radial(self,varl=['dens','temp','velr','mflxr'],bins=256,scales='log',weights='vol',**kwargs):
+    #    self.profs.update(self.get_radial(varl,bins=bins,scales=scales,weights=weights,**kwargs))
 
     def get_slice_coord(self,zoom=0,level=0,xyz=[],axis=0):
         if (not xyz):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
                    self.x2min/2**zoom,self.x2max/2**zoom,
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
-        x,y,z,dx,dy,dz=self.uni_coord(level=level,xyz=xyz)
+        x,y,z,dx,dy,dz=self.get_refined_coord(level=level,xyz=xyz)
         return xp.average(x,axis=axis),xp.average(y,axis=axis),xp.average(z,axis=axis),xyz
 
     # TODO(@mhguo): we should have the ability to get slice at any position with any direction
@@ -496,69 +667,22 @@ class AthenaData:
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
                    self.x2min/2**zoom,self.x2max/2**zoom,
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
-        return xp.average(self.uni_data(var,level=level,xyz=xyz),axis=axis),xyz
+        return xp.average(self.get_refined_data(var,level=level,xyz=xyz),axis=axis),xyz
     
     #def get_slice(self,var='dens',normal='z',north='y',center=[0.,0.,0.],width=1,height=1,zoom=0,level=0):
     #    return
 
-    def set_slice(self,varl=['dens','temp'],varsuf='',zoom=0,level=0,xyz=[],axis=0,redo=False):
+    '''def set_slice(self,varl=['dens','temp'],varsuf='',zoom=0,level=0,xyz=[],axis=0,redo=False):
         for var in varl:
             varname = var+varsuf
-            if (redo or varname not in self.slice.keys()):
-                self.slice[varname] = {}
+            if (redo or varname not in self.slices.keys()):
+                self.slices[varname] = {}
                 data = self.get_slice(var,zoom=zoom,level=level,xyz=xyz,axis=axis)
-                self.slice[varname]['dat'] = data[0]
-                self.slice[varname]['xyz'] = data[1]
+                self.slices[varname]['dat'] = data[0]
+                self.slices[varname]['xyz'] = data[1]
+    '''
 
-    def set_dist(self,varl=['dens','temp','pres'],varsuf='',scale='log',bins=128,weights='vol',\
-        locs=None,redo=False):
-        for var in varl:
-            varname = var+varsuf
-            if (redo or varname not in self.dist.keys()):
-                weinorm = self.data(weights) if type(weights) is str else weights
-        for var in varl:
-            varname = var+varsuf
-            if (redo or varname not in self.dist.keys()):
-                if (scale=='log'):
-                    data = xp.log10(self.data(var))
-                else:
-                    data = self.data(var)
-                xp.nan_to_num(data, copy=False, posinf=0.0, neginf=0.0)
-                if (locs is None):
-                    dat = xp.histogram(data,bins=bins,weights=weinorm)
-                else:
-                    dat = xp.histogram(data[locs],bins=bins,weights=weinorm[locs])
-                self.dist[varname] = {}
-                self.dist[varname]['dat'] = dat[0]
-                self.dist[varname]['loc'] = dat[1]
-        return
-
-    def set_dist2d(self,varl2d=[['dens','temp'],['dens','pres']],scales=['log','log'],\
-        varsuf='',bins=128,weights='vol',locs=None,redo=False):
-        for varl in varl2d:
-            varname = varl[0]+"_"+varl[1]+varsuf
-            if (redo or varname not in self.dist2d.keys()):
-                weinorm = self.data(weights) if type(weights) is str else weights
-                dats=[None,None]
-                for i,var in enumerate(varl):
-                    if (scales[i]=='log'):
-                        dats[i] = xp.log10(self.data(var))
-                    else:
-                        dats[i] = self.data(var)
-                    xp.nan_to_num(dats[i], copy=False, posinf=0.0, neginf=0.0)
-                if (locs is None):
-                    dat = xp.histogram2d(dats[0].ravel(),dats[1].ravel(),bins=bins,\
-                        weights=weinorm.ravel())
-                else:
-                    dat = xp.histogram2d(dats[0][locs],dats[1][locs],bins=bins,\
-                        weights=weinorm[locs])
-                self.dist2d[varname] = {}
-                self.dist2d[varname]['dat'] = dat[0]
-                self.dist2d[varname]['loc1'] = dat[1]
-                self.dist2d[varname]['loc2'] = dat[2]
-        return
-
-    def plot_slice(self,var='dens',data=None,varname='',zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
+    def plot_snapshot(self,var='dens',data=None,varname='',zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
                    title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
                    norm='log',save=False,figdir='../figure/Simu_',figpath=None,\
                    savepath='',savelabel='',figlabel='',dpi=200,vec=None,stream=None,circle=True,\
@@ -566,29 +690,29 @@ class AthenaData:
                    stream_arrowsize=None,vecx='velx',vecy='vely',vel_method='ave',axis=0,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
-        bins=int(xp.min([self.Nx1,self.Nx2,self.Nx3])) if not bins else bins
+        bins=int(xp.min(xp.asarray([self.Nx1,self.Nx2,self.Nx3]))) if not bins else bins
         varname = var+f'_{zoom}' if not varname else varname
         if (not xyz):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
                    self.x2min/2**zoom,self.x2max/2**zoom,
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
         if (data is not None):
-            slc=data['dat']*unit
+            slc = data['dat']*unit
             xyz = list(data['xyz'])
-        elif varname in self.slice.keys():
-            slc = self.slice[varname]['dat']*unit
-            xyz = list(self.slice[varname]['xyz'])
+        elif varname in self.slices.keys():
+            slc = self.slices[varname]['dat']*unit
+            xyz = list(self.slices[varname]['xyz'])
         else:
             slc = self.get_slice(var,zoom=zoom,level=level,xyz=xyz,axis=axis)[0]*unit
         x0,x1,y0,y1,z0,z1 = xyz[0],xyz[1],xyz[2],xyz[3],xyz[4],xyz[5]
         if (vec is not None):
             x,y,z = self.get_slice_coord(zoom=zoom,level=vec,xyz=list(xyz),axis=axis)[:3]
-            if (f'{vecx}_{zoom}' in self.slice.keys()):
-                u = self.slice[f'{vecx}_{zoom}']['dat']
+            if (f'{vecx}_{zoom}' in self.slices.keys()):
+                u = self.slices[f'{vecx}_{zoom}']['dat']
             else:
                 u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
-            if (f'{vecy}_{zoom}' in self.slice.keys()):
-                v = self.slice[f'{vecy}_{zoom}']['dat']
+            if (f'{vecy}_{zoom}' in self.slices.keys()):
+                v = self.slices[f'{vecy}_{zoom}']['dat']
             else:
                 v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
             #x = self.get_slice('x',zoom=zoom,level=vel,xyz=xyz)[0]
@@ -602,17 +726,18 @@ class AthenaData:
             else:
                 u=u[int(fac/2)::fac,int(fac/2)::fac]
                 v=v[int(fac/2)::fac,int(fac/2)::fac]
+            x,y,u,v = asnumpy(x),asnumpy(y),asnumpy(u),asnumpy(v)
             ax.quiver(x*xyunit, y*xyunit, u, v)
         if (stream is not None):
             x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz,axis=axis)[:3]
             #x = self.get_slice('x',zoom=zoom,level=stream,xyz=xyz)[0]
             #y = self.get_slice('y',zoom=zoom,level=stream,xyz=xyz)[0]
-            if (f'{vecx}_{zoom}' in self.slice.keys()):
-                u = self.slice[f'{vecx}_{zoom}']['dat']
+            if (f'{vecx}_{zoom}' in self.slices.keys()):
+                u = self.slices[f'{vecx}_{zoom}']['dat']
             else:
                 u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
-            if (f'{vecy}_{zoom}' in self.slice.keys()):
-                v = self.slice[f'{vecy}_{zoom}']['dat']
+            if (f'{vecy}_{zoom}' in self.slices.keys()):
+                v = self.slices[f'{vecy}_{zoom}']['dat']
             else:
                 v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
             #x,y=xp.meshgrid(x,y)
@@ -629,7 +754,8 @@ class AthenaData:
         # TODO(@mhguo): fix axis=1 case!
         #if(axis==1): x0,x1,y0,y1 = z0,z1,x0,x1
         if(axis==2): x0,x1,y0,y1 = y0,y1,z0,z1
-        im=ax.imshow(slc[::-1,:],extent=(x0*xyunit,x1*xyunit,y0*xyunit,y1*xyunit),\
+        im_arr = asnumpy(slc[::-1,:])
+        im=ax.imshow(im_arr,extent=(x0*xyunit,x1*xyunit,y0*xyunit,y1*xyunit),\
             norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(slc.swapaxes(0,1)[::-1,:],extent=(x0,x1,y0,y1),norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(xp.rot90(data),cmap='plasma',norm=LogNorm(0.9e-1,1.1e1),extent=extent)
@@ -653,21 +779,63 @@ class AthenaData:
             return fig,im
         return fig
 
-    def plot_phase(self,varname='dens_temp',title='',label='',xlabel='X',ylabel='Y',unit=1.0,cmap='viridis',\
-                   norm='log',extent=None,density=False,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
-                   figpath='',x=None,y=None,xshift=0.0,xunit=1.0,yshift=0.0,yunit=1.0,fig=None,ax=None,dpi=128,aspect='auto',**kwargs):
+    # plot is only for plot, accept the data array
+    def plot_image(self,x,y,img,title='',label='',xlabel='X',ylabel='Y',xscale='linear',yscale='linear',\
+                   cmap='viridis',norm='log',save=False,figfolder=None,figlabel='',figname='',\
+                   dpi=200,fig=None,ax=None,colorbar=True,returnim=False,aspect='auto',**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
-        ax = plt.axes() if ax is None else ax
-        dat = self.dist2d[varname]
-        extent = [dat['loc1'].min(),dat['loc1'].max(),dat['loc2'].min(),dat['loc2'].max()] if extent is None else extent
-        if (density):
-            unit /= (extent[1]-extent[0])*(extent[3]-extent[2])/((dat['loc1'].shape[0]-1)*(dat['loc2'].shape[0]-1))
-        #im = ax.imshow(dat['dat'].swapaxes(0,1)[::-1,:]*unit,extent=extent,norm=norm,cmap=cmap,aspect=aspect,**kwargs)
-        x =  dat['loc1']*xunit+xshift if x is None else x
-        y =  dat['loc2']*yunit+yshift if y is None else y
-        im = ax.pcolormesh(x,y,dat['dat'].swapaxes(0,1)[:,:]*unit,norm=norm,cmap=cmap,**kwargs)
+        img = asnumpy(img[:,:])
+        #print(x,y,img)
+        im=ax.pcolormesh(x,y,img,norm=norm,cmap=cmap,**kwargs)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
+        ax.set_xscale(xscale)
+        ax.set_yscale(yscale)
+        ax.set_aspect(aspect)
+        if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
+        if (colorbar):
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="4%", pad=0.02)
+            fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
+        if (save):
+            if (not os.path.isdir(figfolder)):
+                os.mkdir(figfolder)
+            fig.savefig(f"{figfolder}/fig_{figlabel}_{self.num:04d}.png"\
+                        if not figname else figname, bbox_inches='tight')
+        if (returnim):
+            return fig,im
+        return fig
+
+    def plot_stream(self,dpi=200,fig=None,ax=None,x=None,y=None,u=None,v=None,
+                    xyunit=1.0,stream_color='k',stream_linewidth=None,stream_arrowsize=None):
+        fig=plt.figure(dpi=dpi) if fig is None else fig
+        ax.streamplot(x*xyunit, y*xyunit, u, v, color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
+        return fig
+
+    def plot_phase(self,varname='dens_temp',key='vol',bins=128,weights='vol',title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
+                   unit=1.0,cmap='viridis',norm='log',extent=None,density=False,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
+                   figpath='',x=None,y=None,xshift=0.0,xunit=1.0,yshift=0.0,yunit=1.0,fig=None,ax=None,dpi=128,**kwargs):
+        fig=plt.figure(dpi=dpi) if fig is None else fig
+        ax = plt.axes() if ax is None else ax
+        #print(key,varname)
+        try:
+            dat = self.hists[key][varname]
+        except:
+            dat = self.get_hist2d([varname.split('_')],bins=bins,scales=[[xscale,yscale]],weights=weights)[varname]
+        x,y = asnumpy(dat['edges'])
+        im_arr = asnumpy(dat['dat'])
+        extent = [x.min(),x.max(),y.min(),y.max()] if extent is None else extent
+        if (density):
+            xlength = (extent[1]-extent[0] if xscale=='linear' else np.log10(extent[1]/extent[0]))/(x.shape[0]-1)
+            ylength = (extent[3]-extent[2] if yscale=='linear' else np.log10(extent[3]/extent[2]))/(y.shape[0]-1)
+            unit /= xlength*ylength
+        #im = ax.imshow(dat['dat'].swapaxes(0,1)[::-1,:]*unit,extent=extent,norm=norm,cmap=cmap,aspect=aspect,**kwargs)
+        im_arr = im_arr.T*unit
+        x =  x*xunit+xshift
+        y =  y*yunit+yshift
+        fig,im=self.plot_image(x,y,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,xscale=xscale,yscale=yscale,\
+                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=varname,figname=savepath,fig=fig,ax=ax,returnim=True,**kwargs)
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
         if (colorbar):
             from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -681,7 +849,43 @@ class AthenaData:
             fig.savefig(f"{figpath}fig_{varname}_{self.num:04d}.png"\
                         if not savepath else savepath, bbox_inches='tight')
         return fig
-
+    
+    def plot_slice(self,var='dens',key=None,data=None,zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
+                   title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
+                   norm='log',save=False,figdir='../figure/Simu_',figpath=None,\
+                   savepath='',savelabel='',figlabel='',dpi=200,vec=None,stream=None,circle=True,\
+                   fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,stream_color='k',stream_linewidth=None,\
+                   stream_arrowsize=None,vecx='velx',vecy='vely',vel_method='ave',axis=0,**kwargs):
+        fig=plt.figure(dpi=dpi) if fig is None else fig
+        ax = plt.axes() if ax is None else ax
+        bins=int(xp.min(xp.asarray([self.Nx1,self.Nx2,self.Nx3]))) if not bins else bins
+        if var in self.slices[key].keys():
+            slc = self.slices[key][var]
+        else:
+            slc = self.get_slice(['x,y'],var,weights='vol',bins=128,where=xp.abs(self.data('z'))<self.x3max/2**zoom/self.nx3,
+                     range=[[self.x1min/2**zoom,self.x1max/2**zoom],[self.x2min/2**zoom,self.x2max/2**zoom]])
+        x,y = asnumpy(self.slices[key]['edges'])
+        xc,yc = asnumpy(self.slices[key]['centers'])
+        im_arr = asnumpy(slc)*unit
+        if (vec is not None):
+            u,v = self.slices[key][vecx],self.slices[key][vecy]
+            ax.quiver(xc*xyunit, yc*xyunit, u, v)
+        if (stream is not None):
+            u,v = self.slices[key][vecx],self.slices[key][vecy]
+            ax.streamplot(xc*xyunit, yc*xyunit, u, v,color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
+        fig,im=self.plot_image(x*xyunit,y*xyunit,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,\
+                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=var,figname=savepath,fig=fig,ax=ax,returnim=True,**kwargs)
+        if(circle and self.header('problem','r_in')):
+            ax.add_patch(plt.Circle((0,0),float(self.header('problem','r_in')),ec='k',fc='#00000000'))
+        if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
+        if (colorbar):
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="4%", pad=0.02)
+            fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
+        if (returnim):
+            return fig,im
+        return fig
 
 class AthenaDataSet:
     def __init__(self,nlim=10001,version='1.0'):
@@ -689,14 +893,18 @@ class AthenaDataSet:
         self.version=version
         self.ilist=[]
         self.alist=[None]*self.nlim
-        self._config_func()
+        #self._config_func()
         return
 
+    """
     def _config_func(self):
-        ad_methods = [method_name for method_name in dir(AthenaData) if callable(getattr(AthenaData, method_name))]
+        #ad_methods = [method_name for method_name in dir(AthenaData) if callable(getattr(AthenaData, method_name)) and method_name[0]!='_']
+        ad_methods = [method_name for method_name in dir(AthenaData) if method_name[0]!='_']
         for method_name in ad_methods:
-            self.__dict__[method_name] = lambda *args, **kwargs: [getattr(self.alist[i], method_name)(self.alist[i], *args, **kwargs) for i in self.ilist]
+            self.__dict__[method_name] = lambda *args, **kwargs: [getattr(self.alist[i], method_name)(*args, **kwargs) for i in self.ilist]
+            #self.__dict__[method_name] = lambda *args, **kwargs: [self.alist[i].__dict__[method_name](*args, **kwargs) for i in self.ilist]
         return
+    """
 
     def load_list(self,ilist,path=None,dtype=None,info=False,**kwargs):
         for i in ilist:
