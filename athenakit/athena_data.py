@@ -223,6 +223,8 @@ class AthenaData:
         self.data_func['pres'] = lambda self : (self.gamma-1)*self.data('eint')
         self.data_func['temp'] = lambda self : (self.gamma-1)*self.data('eint')/self.data('dens')
         self.data_func['entropy'] = lambda self : self.data('pres')/self.data('dens')**self.gamma
+        self.data_func['c_s^2'] = lambda self : self.gamma*self.data('pres')/self.data('dens')
+        self.data_func['c_s'] = lambda self : xp.sqrt(self.data('c_s^2'))
         self.data_func['momx'] = lambda self : self.data('velx')*self.data('dens')
         self.data_func['momy'] = lambda self : self.data('vely')*self.data('dens')
         self.data_func['momz'] = lambda self : self.data('velz')*self.data('dens')
@@ -260,6 +262,9 @@ class AthenaData:
         self.data_func['btot^2'] = lambda self : self.data('bccx')**2+self.data('bccy')**2+self.data('bccz')**2
         self.data_func['btot'] = lambda self : xp.sqrt(self.data('btot^2'))
         self.data_func['brot'] = lambda self : xp.sqrt(self.data('btot^2')-self.data('bccr')**2)
+        self.data_func['v_A^2'] = lambda self : self.data('btot^2')/self.data('dens')
+        self.data_func['v_A'] = lambda self : xp.sqrt(self.data('v_A^2'))
+        self.data_func['beta'] = lambda self : self.data('pres')/self.data('btot^2')
         return
 
     @property
@@ -425,65 +430,48 @@ class AthenaData:
                                                                 /(s**num_extended_dims)
         return data
     
-    # TODO: may try to improve the performance since it is slow now
+    # helper functions similar to numpy/cupy
     def sum(self,var,**kwargs):
         return asnumpy(xp.sum(self.data(var),**kwargs))
-    def average(self,var,weights=None,where=None,**kwargs):
+    def average(self,var,weights='ones',where=None,**kwargs):
         return asnumpy(xp.average(self.data(var)[where],weights=self.data(weights)[where],**kwargs))
-    def histogramdd(self,varl,bins=10,weights=None,scales='linear',where=None,**kwargs):
-        """
-        Compute the histogram of variables
 
-        Parameters
-        ----------
-        varl : list of str
-            varaible list
-
-        Returns
-        -------
-        hist : dict
-            dictionary of distributions
-        """
-        if (type(varl) is str):
-            varl = [varl]
-        if (type(weights) is str):
-            weights = self.data(weights)[where].ravel()
-        if (type(scales) is str):
-            scales = [scales]*len(varl)
-
-        hist = {}
-        bins_0 = bins
-            
-        arr = [self.data(v)[where].ravel() for v in varl]
-        histname = '_'.join(varl)
-        # get bins
-        bins = [bins_0]*len(varl)
-        scale = [scale]*len(varl) if (type(scale) is str) else scale
-        for i,v,scal in zip(range(len(varl)),varl,scale):
-            if(scal=='linear'):
-                bins[i] = xp.linspace(self.data(v)[where].min(),self.data(v)[where].max(),bins[i]+1)
-            elif(scal=='log'):
-                bins[i] = xp.logspace(xp.log10(self.data(v)[where][self.data(v)[where]>0.0].min()),xp.log10(self.data(v)[where].max()),bins[i]+1)
+    # kernal functions for histograms and profiles
+    def _set_bins(self,var,bins,range,scale,where):
+        if (type(bins) is int):
+            if (scale=='linear'):
+                if (range is None):
+                    dat = self.data(var)[where]
+                    dat = dat[xp.isfinite(dat)]
+                    if dat.size==0:
+                        warnings.warn(f"Warning: no bins for {var}, using linspace(0,1) instead")
+                        return xp.linspace(0.0,1.0,bins+1)
+                    return xp.linspace(dat.min(),dat.max(),bins+1)
+                else:
+                    return xp.linspace(range[0],range[1],bins+1)
+            elif (scale=='log'):
+                if (range is None):
+                    dat = self.data(var)[where]
+                    dat = dat[xp.isfinite(dat)]
+                    dat = dat[dat>0.0]
+                    if dat.size==0:
+                        warnings.warn(f"Warning: no bins for {var}, using logspace(0,1) instead")
+                        return xp.logspace(0.0,1.0,bins+1)
+                    else:
+                        return xp.logspace(xp.log10(dat.min()),xp.log10(dat.max()),bins+1)
+                else:
+                    return xp.logspace(xp.log10(range[0]),xp.log10(range[1]),bins+1)
             else:
-                raise ValueError(f"scale '{scal}' not supported")
-        bins = xp.asarray(bins)
-        # get histogram
-        histogram = xp.histogramdd(arr,bins=bins,weights=weights,**kwargs)
-        hist = {'dat':xp.asarray(histogram[0]),'edges':xp.asarray(hist[1])}
-        hist['centers'] = (hist['edges'][:,:-1]+hist['edges'][:,1:])/2
-        for k in hist.keys():
-            hist[k] = asnumpy(hist[k])
-        
-        return hist
+                raise ValueError(f"scale '{scale}' not supported")
+        return bins
 
-    # TODO(@mhguo): add range!
-    def _histogramdd(self,varll,bins=10,weights=None,scales='linear',where=None,**kwargs):
+    def _histograms(self,varll,bins=10,range=None,weights=None,scales='linear',where=None,**kwargs):
         """
         Compute the histogram of a list of variables
 
         Parameters
         ----------
-        varl : list of list of str
+        varll : list of list of str
             varaible list
 
         Returns
@@ -503,23 +491,16 @@ class AthenaData:
 
         hists = {}
         bins_0 = bins
+        range_0 = range
         for varl,scale in zip(varll,scales):
             arr = [self.data(v)[where].ravel() for v in varl]
             histname = '_'.join(varl)
             # get bins
             bins = [bins_0]*len(varl)
             scale = [scale]*len(varl) if (type(scale) is str) else scale
-            for i,v,scal in zip(range(len(varl)),varl,scale):
-                if(scal=='linear'):
-                    bins[i] = xp.linspace(self.data(v)[where].min(),self.data(v)[where].max(),bins[i]+1)
-                elif(scal=='log'):
-                    try:
-                        bins[i] = xp.logspace(xp.log10(self.data(v)[where][self.data(v)[where]>0.0].min()),xp.log10(self.data(v)[where].max()),bins[i]+1)
-                    except Exception as ex:
-                        print(f"Warning: {ex}, using linear scale instead")
-                        bins[i] = xp.linspace(self.data(v)[where].min(),self.data(v)[where].max(),bins[i]+1)
-                else:
-                    raise ValueError(f"scale '{scal}' not supported")
+            range = [range_0]*len(varl) if (range_0 is None) else range_0
+            for i,v in enumerate(varl):
+                bins[i] = self._set_bins(v,bins[i],range[i],scale[i],where)
             bins = xp.asarray(bins)
             # get histogram
             hist = xp.histogramdd(arr,bins=bins,weights=weights,**kwargs)
@@ -529,7 +510,7 @@ class AthenaData:
                 hists[histname][k] = asnumpy(hists[histname][k])
         return hists
 
-    def _profile(self,bin_varl,varl,bins=10,range=None,weights=None,scales='linear',where=None,**kwargs):
+    def _profiles(self,bin_varl,varl,bins=10,range=None,weights=None,scales='linear',where=None,**kwargs):
         """
         Compute the profile of a (list of) variable with respect to one or more bin variables.
 
@@ -552,26 +533,14 @@ class AthenaData:
             varl = [varl]
         if (type(bins) is int):
             bins = [bins]*len(bin_varl)
+        if (range is None):
+            range = [None]*len(bin_varl)
         if (type(weights) is str):
             weights = self.data(weights)[where].ravel()
         if (type(scales) is str):
             scales = [scales]*len(bin_varl)
         for i,v in enumerate(bin_varl):
-            scale = scales[i]
-            if (type(bins[i]) is int):
-                if (scale=='linear'):
-                    if (range is None):
-                        bins[i] = xp.linspace(self.data(v)[where].min(),self.data(v)[where].max(),bins[i]+1)
-                    else:
-                        bins[i] = xp.linspace(range[i][0],range[i][1],bins[i]+1)
-                elif (scale=='log'):
-                    if (range is None):
-                        bins[i] = xp.logspace(xp.log10(self.data(v)[where][self.data(v)[where]>0.0].min()),
-                                            xp.log10(self.data(v)[where].max()),bins[i]+1)
-                    else:
-                        bins[i] = xp.logspace(xp.log10(range[i][0]),xp.log10(range[i][1]),bins[i]+1)
-                else:
-                    raise ValueError(f"scale '{scale}' not supported")
+            bins[i] = self._set_bins(v,bins[i],range[i],scales[i],where)
         bins = xp.asarray(bins)
         bin_arr = [self.data(v)[where].ravel() for v in bin_varl]
         norm = xp.histogramdd(bin_arr,bins=bins,weights=weights,**kwargs)
@@ -591,13 +560,13 @@ class AthenaData:
 
     ### get data in a dictionary ###
     def histogram(self,*args,**kwargs):
-        hists = self._histogramdd(*args,**kwargs)
+        hists = self._histograms(*args,**kwargs)
         for k in hists.keys():
             hists[k]['edges'] = hists[k]['edges'][0]
             hists[k]['centers'] = hists[k]['centers'][0]
         return hists
     def histogram2d(self,*args,**kwargs):
-        return self._histogramdd(*args,**kwargs)
+        return self._histograms(*args,**kwargs)
     
     def get_sum(self,varl,*args,**kwargs):
         varl = [varl] if (type(varl) is str) else varl
@@ -615,9 +584,9 @@ class AthenaData:
     def get_hist2d(self,varl,bins=128,scales='log',weights='vol',**kwargs):
         return self.histogram2d(varl,bins=bins,scales=scales,weights=weights,**kwargs)
     def get_profile(self,bin_var,varl,bins=256,weights='vol',**kwargs):
-        return self._profile(bin_var,varl,bins=bins,weights=weights,**kwargs)
+        return self._profiles(bin_var,varl,bins=bins,weights=weights,**kwargs)
     def get_profile2d(self,bin_varl,varl,bins=256,weights='vol',**kwargs):
-        return self._profile(bin_varl,varl,bins=bins,weights=weights,**kwargs)
+        return self._profiles(bin_varl,varl,bins=bins,weights=weights,**kwargs)
 
     def set_hist(self,varl,key=None,bins=128,scales='log',weights='vol',**kwargs):
         key = weights if key is None else key
@@ -649,7 +618,7 @@ class AthenaData:
         self.slices[key].update(self.get_profile2d(bin_varl,varl,**kwargs))
 
     #def get_radial(self,varl=['dens','temp','velr','mflxr'],bins=256,scales='log',weights='vol',**kwargs):
-    #    return self._profile(['r'],varl,bins=bins,scales=scales,weights=weights,**kwargs)
+    #    return self._profiles(['r'],varl,bins=bins,scales=scales,weights=weights,**kwargs)
     #def set_radial(self,varl=['dens','temp','velr','mflxr'],bins=256,scales='log',weights='vol',**kwargs):
     #    self.profs.update(self.get_radial(varl,bins=bins,scales=scales,weights=weights,**kwargs))
 

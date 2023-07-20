@@ -1,3 +1,10 @@
+'''
+Script for running analysis of athena++ simulation
+
+Example:
+    python -u py_job.py -p ../simulation -a -t wp
+'''
+
 import os
 import sys
 import argparse
@@ -13,8 +20,6 @@ import multiprocessing as mp
 sys.path.append('/home/mg9443/Git')
 import athenakit.athenakit as ak
 from athenakit.athenakit.problem import acc
-
-root_dir='../'
 
 def adwork(ad,bins=256):
     acc.add_tools(ad)
@@ -56,7 +61,8 @@ def adwork(ad,bins=256):
     
     varl=[['r','dens'],['r','temp'],['r','pres']]
     ad.set_hist2d(varl,weights='vol',bins=bins,scales='log')
-    varl=[['dens','temp'],['r','dens'],['r','temp'],['r','pres'],['r','amtot']]
+    varl=[['dens','temp'],['r','dens'],['r','temp'],['r','pres'],['r','c_s'],['r','amtot'],
+          ['r','btot'],['r','beta'],['r','vtot'],['r','v_A']]
     ad.set_hist2d(varl,weights='mass',bins=bins,scales='log')
 
     varl=['mdot','mdotin','mdotout','momdot','momdotin','momdotout','ekdot','ekdotin','ekdotout']
@@ -80,11 +86,17 @@ def adwork(ad,bins=256):
         ad.set_profile('r',varl=varl,key='r_vol_hot',bins=bins,scales='log',weights='vol',where=where,range=[[ad.rmin,ad.rmax]])
         ad.set_profile('r',varl=varl,key='r_mass_hot',bins=bins,scales='log',weights='mass',where=where,range=[[ad.rmin,ad.rmax]])
     
-    varl=["dens",'temp',"tran_velR","tran_velz","tran_radial_flow",
+    varl=["dens",'temp','beta',"tran_velR","tran_velz","tran_velphi","tran_bccR","tran_bccz","tran_bccphi","tran_radial_flow",
           "tran_stress_zphi_reynolds","tran_stress_zphi_maxwell","tran_stress_zphi",
           "tran_stress_Rphi_reynolds","tran_stress_Rphi_maxwell","tran_stress_Rphi",
           ]
-    ad.set_profile2d(['tran_R','tran_z'],varl=varl,key='Rz_vol',bins=bins,weights='vol')
+    Rmax=ad.rmax/2**7
+    ad.set_profile2d(['tran_R','tran_z'],varl=varl,key='tRz_vol',bins=128,weights='vol',
+                     where=np.logical_and(ad.data('tran_R')<Rmax,np.abs(ad.data('tran_z'))<Rmax))
+    ad.set_profile('tran_R',varl=varl,key='tR_vol',bins=128,weights='vol',
+                   where=(ad.data('tran_R')>ad.rin) & (ad.data('tran_R')<10*Rmax) & (np.abs(ad.data('tran_z/R'))<0.1))
+    ad.set_profile('tran_z',varl=varl,key='tz_vol',bins=128,weights='vol',
+                   where=(ad.data('tran_R')>0.1*Rmax) & (ad.data('tran_R')<Rmax) & (np.abs(ad.data('tran_z'))<Rmax))
     
     return ad
 
@@ -92,8 +104,8 @@ def adplot(ad):
     figdir=ad.path.replace('athdf','fig')+'/'
     unit=ad.unit
     ran=ad.rad_initial
-    lunit,tunit,munit=unit.length_cgs/ak.pc_cgs,unit.time_cgs/ak.myr_cgs,unit.mass_cgs/ak.msun_cgs,
-    Tunit,mdot_unit=unit.temperature_cgs,unit.mdot_msun_yr
+    lunit,tunit,munit,vunit=unit.length_cgs/ak.pc_cgs,unit.time_cgs/ak.myr_cgs,unit.mass_cgs/ak.msun_cgs,unit.velocity_cgs/ak.km_s_cgs
+    Tunit,mdot_unit,magnetic_unit=unit.temperature_cgs,unit.mdot_msun_yr,unit.magnetic_field_cgs/1e-6
     #'''
     #jlist=[0,3,5,7,9]
     jlist=[0,3,5,7,9]
@@ -108,7 +120,6 @@ def adplot(ad):
     fig,axes=ak.subplots(3,5,figsize=(20,10),dpi=128,wspace=0.5,raw=True)
     fig.suptitle(f'Time={ad.time*tunit}')
     for i,j in enumerate(jlist):#
-        print("plot j ",j)
         zoom=j
         vec=j-2
         xyz=None
@@ -137,8 +148,8 @@ def adplot(ad):
     #'''
 
     #'''
-    print('phase')
-    fig,axes=ak.subplots(2,2,figsize=(12,8),dpi=128,wspace=0.5,top=0.88,hspace=0.4,raw=True)
+    print('phase '+str(ad.num))
+    fig,axes=ak.subplots(2,4,figsize=(16,8),dpi=128,wspace=0.5,top=0.88,hspace=0.4,left=0.05,right=0.95,raw=True)
     fig.suptitle(f'Time={ad.time*tunit} Myr')
     savelabel=f'phase_0'
     vmin, vmax = 1e0,1e12
@@ -156,18 +167,28 @@ def adplot(ad):
     fig=ad.plot_phase(fig=fig,ax=axes[1,0],key=key,varname='r_temp',weights=weights,xlabel=r'$r\rm\,[pc]$',ylabel=r'$T\,\rm [K]$',label=r'$M\rm\,[M_\odot]$',
                       title='',unit=munit,density=True,xunit=lunit,yunit=unit.temperature_cgs,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
     axes[1,0].plot(ran['r'][locs]*lunit,ran['temp'][locs]*Tunit,':',label=r'$T$',color='k')
-    
-    #fig=ad.plot_phase([i],figdir=figdir,fig=fig,ax=axes[0,2],varname='r_amtot_m_0',xlabel=r'$n\rm\,[cm^{-3}]$',ylabel=r'$L$',title='',extent=None,norm=LogNorm(1e-8,1e3),aspect='auto')
+
     fig=ad.plot_phase(fig=fig,ax=axes[1,1],key=key,varname='r_amtot',weights=weights,xlabel=r'$r\rm\,[pc]$',ylabel=r'$L$',label=r'$M\rm\,[M_\odot]$',
                       title='',unit=munit,density=True,xunit=lunit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
     axes[1,1].plot(ran['r'][locs]*lunit,ran['am_kep'][locs],':',label=r'$L_{\rm Kep}$',color='k')
+
+    fig=ad.plot_phase(fig=fig,ax=axes[0,2],key=key,varname='r_vtot',weights=weights,xlabel=r'$r\rm\,[pc]$',ylabel=r'$v\rm\,[km\,s^{-1}]$',label=r'$M\rm\,[M_\odot]$',
+                      title='',unit=munit,density=True,xunit=lunit,yunit=vunit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
+    fig=ad.plot_phase(fig=fig,ax=axes[0,3],key=key,varname='r_v_A',weights=weights,xlabel=r'$r\rm\,[pc]$',ylabel=r'$v_A\rm\,[km\,s^{-1}]$',label=r'$M\rm\,[M_\odot]$',
+                      title='',unit=munit,density=True,xunit=lunit,yunit=vunit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
+    
+    fig=ad.plot_phase(fig=fig,ax=axes[1,2],key=key,varname='r_btot',weights=weights,xlabel=r'$r\rm\,[pc]$',ylabel=r'$|B|\rm\,[\mu G]$',label=r'$M\rm\,[M_\odot]$',
+                      title='',unit=munit,density=True,xunit=lunit,yunit=magnetic_unit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
+    fig=ad.plot_phase(fig=fig,ax=axes[1,3],key=key,varname='r_beta',weights=weights,xlabel=r'$r\rm\,[pc]$',ylabel=r'$\beta$',label=r'$M\rm\,[M_\odot]$',
+                      title='',unit=munit,density=True,xunit=lunit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
+    
 
     fig.savefig(f"{figdir}/fig_{savelabel}_{ad.num:04d}.png",bbox_inches='tight')
     plt.close(fig)
     #'''
 
     #'''
-    print('radial')
+    print('radial '+str(ad.num))
     #fig,axes=ak.subplots(2,2,figsize=(8,6),dpi=200,wspace=0.3,top=0.92,hspace=0.1,sharex=False,raw=True)
     fig, axes = ak.subplots(2,2,top=0.92,wspace=0.05,figsize=(8,5.4),dpi=108)
     fig.suptitle(f'Time={ad.time*tunit} Myr')
@@ -195,18 +216,18 @@ def adplot(ad):
         for j,var,ls,sign,label in zip([0,1,2],['mdotin','mdotout','mdot'],['--',':','-'],[-1,1,-1],[r'$\dot{M}_{\rm inflow}$',r'$\dot{M}_{\rm outflow}$',r'$\dot{M}_{\rm net}$']):
             axes[1,1].plot(r*lunit,sign*rad[var+suf]*mdot_unit,linestyle=ls,color=colors[cn],label=label if i==3 else None)
 
-    for n,ax in enumerate(axes.flat):
-        ax.set_ylabel(ylabels[n])
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-        ax.grid()
-        ax.set_xlim(ad.rmin*lunit,ad.rmax*lunit)
     axes[0,0].set_ylim(5e-3)
     axes[0,1].set_ylim(1e-1,3e3)
     axes[1,0].set_ylim(1e5)
     axes[1,1].set_ylim(1e-3,3e2)
     axes[-1,0].set_xlabel(r'$r\,[\rm pc]$')
     axes[-1,1].set_xlabel(r'$r\,[\rm pc]$')
+    for n,ax in enumerate(axes.flat):
+        ax.set_ylabel(ylabels[n])
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.grid()
+        ax.set_xlim(ad.rmin*lunit,ad.rmax*lunit)
     axes[0,0].legend(ncol=1,loc='best')
     axes[0,1].legend(ncol=1,loc='best')
     axes[1,1].legend(ncol=1,loc='best')
@@ -218,17 +239,18 @@ def adplot(ad):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='manual to this script')
-    parser.add_argument('-n', '--name', type=str, default = 'amhkey_min_12')
+    parser.add_argument('-p', '--path', type=str, default = '../simu')
+    parser.add_argument('-d', '--data', type=str, default = 'data')
     parser.add_argument('-t', '--task', type=str, default = '')
     parser.add_argument('-a', '--all',  action='store_true', default=False)
     args = parser.parse_args()
-    simu_name=args.name
+    data_path=args.path+'/'+args.data+'/'
     task=args.task
     # get path
-    binpath=root_dir+simu_name+'/data/bin/'
-    athdfpath=root_dir+simu_name+'/data/athdf/'
-    pklpath=root_dir+simu_name+'/data/pkl/'
-    figpath=root_dir+simu_name+'/data/fig/'
+    binpath=data_path+'bin/'
+    athdfpath=data_path+'athdf/'
+    pklpath=data_path+'pkl/'
+    figpath=data_path+'fig/'
     for path in [athdfpath,pklpath,figpath]:
         if not os.path.isdir(path):
             os.mkdir(path)
@@ -240,36 +262,37 @@ if __name__ == "__main__":
             if (args.all or not os.path.isfile(pklpath+f'Base.{num:05d}.pkl')):
                 numlist.append(num)
     numlist=sorted(list(set(numlist)))
-    print('Work for', numlist)
+    print('Work for', data_path, numlist)
     # run
     def run(i):
         filename=athdfpath+f'Acc.mhd_w_bcc.{i:05d}.athdf'
-        if not os.path.isfile(filename):
+        if (args.all or not os.path.isfile(filename)) and os.path.isfile(binpath+f'Acc.mhd_w_bcc.{i:05d}.bin'):
             ak.bin_to_athdf(binpath+f'Acc.mhd_w_bcc.{i:05d}.bin',filename)
             ak.bin_to_athdf(binpath+f'Acc.mhd_divb.{i:05d}.bin',athdfpath+f'Acc.mhd_divb.{i:05d}.athdf')
         ad=ak.AthenaData()
-        try:
+        #try:
+        if True:
             print(i)
             if ('w' in task):
                 print(f'loading athdf i={i}...')
-                filename=root_dir+simu_name+f'/data/athdf/Acc.mhd_w_bcc.{i:05d}.athdf'
+                filename=data_path+f'athdf/Acc.mhd_w_bcc.{i:05d}.athdf'
                 ad.load(filename)
                 print(f'working i={i}...')
                 adwork(ad).save(ad.path.replace('athdf','pkl')+f'/Base.{ad.num:05d}.pkl')
                 #adwork(ad).save(ad.path.replace('athdf','h5')+f'/Base.{ad.num:05d}.h5')
             if ('p' in task):
                 print(f'loading pkl i={i}...')
-                filename=root_dir+simu_name+f'/data/pkl/Base.{i:05d}.pkl'
+                filename=data_path+f'pkl/Base.{i:05d}.pkl'
                 ad.load(filename)
                 print(f'plotting i={i}...')
                 adplot(ad)
-        except Exception as excp:
-            print(f"File {filename}:",sys.exc_info()[2].tb_frame,'\n',excp)
+        #except Exception as excp:
+        #    print(f"File {filename}:",sys.exc_info()[2].tb_frame,'\n',excp)
         return
 
     tic=time.time()
-    with mp.Pool(16) as p:p.map(run,numlist)
     #for i in numlist:run(i)
+    with mp.Pool(16) as p:p.map(run,numlist)
     toc=time.time()
     print(f"Time cost: {toc-tic:.2f}s")
     print("Done")
