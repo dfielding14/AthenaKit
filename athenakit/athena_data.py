@@ -147,7 +147,7 @@ class AthenaData:
         return
 
     def config(self):
-        if (not self.coord): self.set_coord()
+        if (self.data_raw and not self.coord): self.set_coord()
         self._config_data_func()
         self.path = str(Path(self.filename).parent)
         self.num = int(self.filename.split('.')[-2])
