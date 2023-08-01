@@ -27,6 +27,7 @@ logni=np.array([0,-1.01,-3.44,-3.95,-3.07,-3.91,-5.67,-4.42,-5.53,-4.45,-4.79,-5
 n_i=10**logni # ion number density
 n_e=n_i*atom_number # electron number density
 n_t=n_i+n_e  # total number density
+m_t=np.sum(n_i*atom_mass) # total mass density
 n_t_h_ratio=n_t.sum()
 n_e_h_ratio=n_e.sum()
 n_i_h_ratio=n_i.sum()
@@ -170,22 +171,24 @@ def add_data(ad,add_bcc=True):
     ad.add_data_func('tran_bccR', lambda sf : (sf.data('tran_x')*sf.data('tran_bccx')+sf.data('tran_y')*sf.data('tran_bccy'))/sf.data('tran_R'))
     ad.add_data_func('tran_bccphi', lambda sf : (sf.data('tran_x')*sf.data('tran_bccy')-sf.data('tran_y')*sf.data('tran_bccx'))/sf.data('tran_R'))
 
-    ad.add_data_func('tran_stress_zphi_reynolds', lambda sf : sf.data('dens')*sf.data('tran_velz')*sf.data('tran_velphi'))
+    ad.add_data_func('tran_stress_zphi_hydro', lambda sf : sf.data('dens')*sf.data('tran_velz')*sf.data('tran_velphi'))
     ad.add_data_func('tran_stress_zphi_maxwell', lambda sf : -sf.data('tran_bccz')*sf.data('tran_bccphi'))
-    ad.add_data_func('tran_stress_zphi', lambda sf : sf.data('tran_stress_zphi_reynolds')+sf.data('tran_stress_zphi_maxwell'))
+    ad.add_data_func('tran_stress_zphi', lambda sf : sf.data('tran_stress_zphi_hydro')+sf.data('tran_stress_zphi_maxwell'))
 
-    ad.add_data_func('tran_stress_Rphi_reynolds', lambda sf : sf.data('dens')*sf.data('tran_velR')*sf.data('tran_velphi'))
+    ad.add_data_func('tran_stress_Rphi_hydro', lambda sf : sf.data('dens')*sf.data('tran_velR')*sf.data('tran_velphi'))
     ad.add_data_func('tran_stress_Rphi_maxwell', lambda sf : -sf.data('tran_bccR')*sf.data('tran_bccphi'))
-    ad.add_data_func('tran_stress_Rphi', lambda sf : sf.data('tran_stress_Rphi_reynolds')+sf.data('tran_stress_Rphi_maxwell'))
+    ad.add_data_func('tran_stress_Rphi', lambda sf : sf.data('tran_stress_Rphi_hydro')+sf.data('tran_stress_Rphi_maxwell'))
 
     ad.add_data_func('tran_Omega', lambda sf : xp.sqrt(sf.accel(sf.data('tran_R'))/sf.data('tran_R')))
+    ad.add_data_func('tran_dens_velR', lambda sf : sf.data('dens')*sf.data('tran_velR'))
+    ad.add_data_func('tran_dens_velz', lambda sf : sf.data('dens')*sf.data('tran_velz'))
     ad.add_data_func('tran_radial_flow', lambda sf : 0.5*sf.data('dens')*sf.data('tran_velR')*sf.data('tran_Omega'))
     ad.add_data_func('tran_z/R', lambda sf : sf.data('tran_z')/sf.data('tran_R'))
 
-    ad.add_data_func('tran_stress_zphi_reynolds/R', lambda sf : sf.data('tran_stress_zphi_reynolds')/sf.data('tran_R'))
+    ad.add_data_func('tran_stress_zphi_hydro/R', lambda sf : sf.data('tran_stress_zphi_hydro')/sf.data('tran_R'))
     ad.add_data_func('tran_stress_zphi_maxwell/R', lambda sf : sf.data('tran_stress_zphi_maxwell')/sf.data('tran_R'))
     ad.add_data_func('tran_stress_zphi/R', lambda sf : sf.data('tran_stress_zphi')/sf.data('tran_R'))
-    ad.add_data_func('tran_stress_Rphi_reynolds/R', lambda sf : sf.data('tran_stress_Rphi_reynolds')/sf.data('tran_R'))
+    ad.add_data_func('tran_stress_Rphi_hydro/R', lambda sf : sf.data('tran_stress_Rphi_hydro')/sf.data('tran_R'))
     ad.add_data_func('tran_stress_Rphi_maxwell/R', lambda sf : sf.data('tran_stress_Rphi_maxwell')/sf.data('tran_R'))
     ad.add_data_func('tran_stress_Rphi/R', lambda sf : sf.data('tran_stress_Rphi')/sf.data('tran_R'))
 

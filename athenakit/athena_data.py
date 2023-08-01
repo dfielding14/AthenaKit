@@ -857,11 +857,10 @@ class AthenaData:
         return fig
 
 class AthenaDataSet:
-    def __init__(self,nlim=10001,version='1.0'):
-        self.nlim=nlim
+    def __init__(self,version='1.0'):
         self.version=version
-        self.ilist=[]
-        self.alist=[None]*self.nlim
+        self.ns=[]
+        self.ads={}
         #self._config_func()
         return
 
@@ -875,11 +874,14 @@ class AthenaDataSet:
         return
     """
 
-    def load_list(self,ilist,path=None,dtype=None,info=False,**kwargs):
-        for i in ilist:
-            if(info): print("load:",i)
-            if self.alist[i] is None:
-                self.alist[i]=AthenaData(num=i,version=self.version)
-            self.alist[i].load(path+f".{i:05d}."+dtype,**kwargs)
-            self.ilist=sorted(list(set(self.ilist + list([i]))))
+    def load(self,ns,path=None,dtype=None,info=False,**kwargs):
+        for n in ns:
+            if(info): print("load:",n)
+            if n not in self.ads.keys():
+                self.ads[n]=AthenaData(num=n,version=self.version)
+            self.ads[n].load(path+f".{n:05d}."+dtype,**kwargs)
+            self.ns=sorted(list(set(self.ads.keys())))
         return
+    
+    def __call__(self, n):
+        return self.ads[n]
