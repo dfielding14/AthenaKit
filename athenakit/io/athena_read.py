@@ -23,3 +23,22 @@ def hst(filename):
     for i,name in enumerate(data_names):
         data[name]=arr[i][locs]
     return data
+
+# Read .tab files and return dict.
+def tab(filename):
+    # Parse header
+    data_dict = {}
+    with open(filename, 'r') as data_file:
+        line = data_file.readline()
+        attributes = re.search(r'time=(\S+)\s+cycle=(\S+)', line)
+        line = data_file.readline()
+        headings = line.split()[1:]
+    data_dict['time'] = float(attributes.group(1))
+    data_dict['cycle'] = int(attributes.group(2))
+
+    # Read data
+    arr=np.loadtxt(filename).T
+    # Make dictionary of results
+    for i,name in enumerate(headings):
+        data_dict[name]=arr[i]
+    return data_dict

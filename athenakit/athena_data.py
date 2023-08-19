@@ -24,6 +24,10 @@ def load(filename):
     return ad
 
 def asnumpy(arr):
+    if (type(arr) is dict):
+        return {k:asnumpy(v) for k,v in arr.items()}
+    if (type(arr) is list):
+        return [asnumpy(a) for a in arr]
     if (cupy_enabled):
         return xp.asnumpy(arr)
     else:
@@ -504,10 +508,9 @@ class AthenaData:
             bins = xp.asarray(bins)
             # get histogram
             hist = xp.histogramdd(arr,bins=bins,weights=weights,**kwargs)
-            hists[histname] = {'dat':xp.asarray(hist[0]),'edges':xp.asarray(hist[1])}
-            hists[histname]['centers'] = (hists[histname]['edges'][:,:-1]+hists[histname]['edges'][:,1:])/2
-            for k in hists[histname].keys():
-                hists[histname][k] = asnumpy(hists[histname][k])
+            hists[histname] = {'dat':xp.asarray(hist[0]),'edges':{v:_ for v,_ in zip(varl,hist[1])}}
+            hists[histname]['centers'] = {v:(hists[histname]['edges'][v][:-1]+hists[histname]['edges'][v][1:])/2 for v in varl}
+        hists = asnumpy(hists)
         return hists
 
     def _profiles(self,bin_varl,varl,bins=10,range=None,weights=None,scales='linear',where=None,**kwargs):
@@ -541,29 +544,27 @@ class AthenaData:
             scales = [scales]*len(bin_varl)
         for i,v in enumerate(bin_varl):
             bins[i] = self._set_bins(v,bins[i],range[i],scales[i],where)
-        bins = xp.asarray(bins)
         bin_arr = [self.data(v)[where].ravel() for v in bin_varl]
         norm = xp.histogramdd(bin_arr,bins=bins,weights=weights,**kwargs)
-        profs = {'edges':xp.asarray(norm[1]),'norm':xp.asarray(norm[0])}
-        profs['centers'] = (profs['edges'][:,:-1]+profs['edges'][:,1:])/2
+        profs = {'edges':{v:_ for v,_ in zip(bin_varl,norm[1])},'norm':norm[0]}
+        profs['centers'] = {v:(edge[:-1]+edge[1:])/2 for v,edge in profs['edges'].items()}
         for var in bin_varl:
-            profs[var] = profs['centers'][bin_varl.index(var)]
+            profs[var] = profs['centers'][var]
         for var in varl:
             if (weights is None):
                 data_weights = self.data(var)[where].ravel()
             else:
                 data_weights = self.data(var)[where].ravel()*weights
             profs[var] = xp.histogramdd(bin_arr,bins=bins,weights=data_weights,**kwargs)[0]/norm[0]
-        for k in profs.keys():
-            profs[k] = asnumpy(profs[k])
+        profs = asnumpy(profs)
         return profs
 
     ### get data in a dictionary ###
     def histogram(self,*args,**kwargs):
         hists = self._histograms(*args,**kwargs)
         for k in hists.keys():
-            hists[k]['edges'] = hists[k]['edges'][0]
-            hists[k]['centers'] = hists[k]['centers'][0]
+            hists[k]['edges'] = list(hists[k]['edges'])[0]
+            hists[k]['centers'] = list(hists[k]['centers'])[0]
         return hists
     def histogram2d(self,*args,**kwargs):
         return self._histograms(*args,**kwargs)
@@ -695,6 +696,7 @@ class AthenaData:
             else:
                 u=u[int(fac/2)::fac,int(fac/2)::fac]
                 v=v[int(fac/2)::fac,int(fac/2)::fac]
+            if(axis==2): x,y = y,z
             x,y,u,v = asnumpy(x),asnumpy(y),asnumpy(u),asnumpy(v)
             ax.quiver(x*xyunit, y*xyunit, u, v)
         if (stream is not None):
@@ -719,6 +721,7 @@ class AthenaData:
             # TODO(@mhguo): fix axis=1 case!
             #if(axis==1): x,y = z.swapaxes(0,1), x.swapaxes(0,1)
             if(axis==2): x,y = y,z
+            x,y,u,v = asnumpy(x),asnumpy(y),asnumpy(u),asnumpy(v)
             ax.streamplot(x*xyunit, y*xyunit, u, v,color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
         # TODO(@mhguo): fix axis=1 case!
         #if(axis==1): x0,x1,y0,y1 = z0,z1,x0,x1
@@ -752,7 +755,8 @@ class AthenaData:
     def plot_image(self,x,y,img,title='',label='',xlabel='X',ylabel='Y',xscale='linear',yscale='linear',\
                    cmap='viridis',norm='log',save=False,figfolder=None,figlabel='',figname='',\
                    dpi=200,fig=None,ax=None,colorbar=True,returnim=False,aspect='auto',**kwargs):
-        fig=plt.figure(dpi=dpi) if fig is None else fig
+        fig = plt.figure(dpi=dpi) if fig is None else fig
+        ax = plt.axes() if ax is None else ax
         img = asnumpy(img[:,:])
         #print(x,y,img)
         im=ax.pcolormesh(x,y,img,norm=norm,cmap=cmap,**kwargs)
@@ -792,7 +796,7 @@ class AthenaData:
             dat = self.hists[key][varname]
         except:
             dat = self.get_hist2d([varname.split('_')],bins=bins,scales=[[xscale,yscale]],weights=weights)[varname]
-        x,y = asnumpy(dat['edges'])
+        x,y = dat['edges'].values()
         im_arr = asnumpy(dat['dat'])
         extent = [x.min(),x.max(),y.min(),y.max()] if extent is None else extent
         if (density):
@@ -823,9 +827,9 @@ class AthenaData:
                    title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
                    norm='log',save=False,figdir='../figure/Simu_',figpath=None,\
                    savepath='',savelabel='',figlabel='',dpi=200,vec=None,stream=None,circle=True,\
-                   fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,stream_color='k',stream_linewidth=None,\
-                   stream_arrowsize=None,vecx='velx',vecy='vely',vel_method='ave',axis=0,**kwargs):
-        fig=plt.figure(dpi=dpi) if fig is None else fig
+                   fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,stream_color='k',stream_linewidth=1.0,\
+                   stream_arrowsize=1.0,vecx='velx',vecy='vely',vel_method='ave',aspect='equal',**kwargs):
+        fig = plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         bins=int(xp.min(xp.asarray([self.Nx1,self.Nx2,self.Nx3]))) if not bins else bins
         if var in self.slices[key].keys():
@@ -833,17 +837,17 @@ class AthenaData:
         else:
             slc = self.get_slice(['x,y'],var,weights='vol',bins=128,where=xp.abs(self.data('z'))<self.x3max/2**zoom/self.nx3,
                      range=[[self.x1min/2**zoom,self.x1max/2**zoom],[self.x2min/2**zoom,self.x2max/2**zoom]])
-        x,y = asnumpy(self.slices[key]['edges'])
-        xc,yc = asnumpy(self.slices[key]['centers'])
-        im_arr = asnumpy(slc)*unit
-        if (vec is not None):
-            u,v = self.slices[key][vecx],self.slices[key][vecy]
-            ax.quiver(xc*xyunit, yc*xyunit, u, v)
-        if (stream is not None):
-            u,v = self.slices[key][vecx],self.slices[key][vecy]
+        x,y = self.slices[key]['edges'].values()
+        xc,yc = self.slices[key]['centers'].values()
+        im_arr = asnumpy(slc.T)*unit
+        if (stream):
+            u,v = self.slices[key][vecx].T,self.slices[key][vecy].T
             ax.streamplot(xc*xyunit, yc*xyunit, u, v,color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
-        fig,im=self.plot_image(x*xyunit,y*xyunit,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,\
+        fig,im=self.plot_image(x*xyunit,y*xyunit,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,aspect=aspect,\
                      cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=var,figname=savepath,fig=fig,ax=ax,returnim=True,**kwargs)
+        if (vec):
+            u,v = self.slices[key][vecx].T,self.slices[key][vecy].T
+            ax.quiver(xc*xyunit, yc*xyunit, u, v)
         if(circle and self.header('problem','r_in')):
             ax.add_patch(plt.Circle((0,0),float(self.header('problem','r_in')),ec='k',fc='#00000000'))
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
