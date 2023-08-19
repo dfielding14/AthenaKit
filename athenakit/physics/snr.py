@@ -17,7 +17,6 @@ class SNR_evo:
         self.n0=1
         self.M0=units.msun_cgs
         self.E0=1e51
-        self.mu0=1.4
         self.mu=mu
         self.gamma=gamma
         self.unit=units.Units(lunit=units.pc_cgs,munit=mu*units.atomic_mass_unit_cgs*units.pc_cgs**3,tunit=units.myr_cgs,mu=mu)
@@ -35,12 +34,12 @@ class SNR_evo:
         #self.r_free=2.75*n**(-1/3)
         
         self.epsilon=1.15167
-        self.t_sf=0.044*E**0.22*n**-0.55/(self.mu/self.mu0)**-0.55
+        self.t_sf=0.030*E**0.22*n**-0.55
         self.r_sf=self._r_st(self.t_sf)
         self.v_sf=self._v_st(self.t_sf)
         self.mom_sf=2.69*self.n*self.v_sf*self.r_sf**3
-        #self.r_sf=22.6*E**0.29*n**-0.42/(self.mu/self.mu0)**-0.42
-        #self.mom_sf=2.17e5*E**0.93*n**-0.13/(self.mu/self.mu0)**-0.13
+        #self.r_sf=22.6*E**0.29*n**-0.42
+        #self.mom_sf=2.17e5*E**0.93*n**-0.13
         self.evo={}
         if(config): self.config()
         return
@@ -49,6 +48,8 @@ class SNR_evo:
         return self.epsilon*self.E**(1/5)*self.n**(-1/5)*t**(2/5)
     def _v_st(self,t):
         return 2/5*self.epsilon*self.E**(1/5)*self.n**(-1/5)*t**(-3/5)
+    def _temp_st(self,t):
+        return 3.0/16.0*self._v_st(t)**2
     @np.vectorize
     def _r(self,t):
         if(t<=self.t_free):
@@ -78,6 +79,7 @@ class SNR_evo:
             return 2.69*self.n*self._v_st(t)*self._r_st(t)**3
         else:
             return self.mom_sf*(1+4.6*((t/self.t_sf)**(1/7)-1.0))
+    # This is averaged pressure, not shocked pressure
     @np.vectorize
     def _pres(self,t):
         if(t<=self.t_free):
@@ -103,6 +105,7 @@ class SNR_evo:
         self.evo['v']=self.v(t)
         self.evo['momr']=self.momr(t)
         self.evo['pres']=self.pres(t)
+        # Make sure this is correct!
         self.evo['temp']=self.evo['pres']/self.n_shock
         self.evo['m']=4/3*np.pi*self.n*self.evo['r']**3+self.M
         self.evo['eta']=self.evo['v']/(self.evo['r']/self.evo['t'])
