@@ -15,6 +15,13 @@ from .units import *
 mu=0.618
 unit=Units(lunit=kpc_cgs,munit=mu*atomic_mass_unit_cgs*kpc_cgs**3,mu=mu)
 
+def zeros_like(obj):
+    if (type(obj) is dict):
+        return {k:zeros_like(v) for k,v in obj.items()}
+    if (type(obj) is list):
+        return [zeros_like(a) for a in obj]
+    return np.zeros_like(obj)
+
 # Convert all binary files in binary path to athdf files in athdf path
 def bin_to_athdf(binary_fname,athdf_fname):
     xdmf_fname = athdf_fname + ".xdmf"

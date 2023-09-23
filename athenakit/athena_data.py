@@ -4,8 +4,9 @@ import numpy as np
 global cupy_enabled
 try:
     import cupy as xp
+    xp.array(0)
     cupy_enabled = True
-except ImportError:
+except:
     import numpy as xp
     cupy_enabled = False
 import h5py
@@ -193,8 +194,9 @@ class AthenaData:
         self.x3min = self.header( 'mesh', 'x3min', float)
         self.x3max = self.header( 'mesh', 'x3max', float)
 
-        self.use_e=self.header('hydro','use_e',bool,True) if 'hydro' in self._header.keys() else self.header('mhd','use_e',bool,True) 
-        self.gamma=self.header('hydro','gamma',float,5/3) if 'hydro' in self._header.keys() else self.header('mhd','gamma',float,5/3)
+        self.is_mhd = 'mhd' in self._header.keys()
+        self.use_e=self.header('mhd','use_e',bool,True) if self.is_mhd else self.header('hydro','use_e',bool,True) 
+        self.gamma=self.header('mhd','gamma',float,5/3) if self.is_mhd else self.header('hydro','gamma',float,5/3)
         
         return
     
@@ -225,7 +227,8 @@ class AthenaData:
         self.data_func['r'] = lambda self : xp.sqrt(self.data('x')**2+self.data('y')**2+self.data('z')**2)
         self.data_func['mass'] = lambda self : self.data('vol')*self.data('dens')
         self.data_func['pres'] = lambda self : (self.gamma-1)*self.data('eint')
-        self.data_func['temp'] = lambda self : (self.gamma-1)*self.data('eint')/self.data('dens')
+        self.data_func['pgas'] = lambda self : self.data('pres')
+        self.data_func['temp'] = lambda self : self.data('pres')/self.data('dens')
         self.data_func['entropy'] = lambda self : self.data('pres')/self.data('dens')**self.gamma
         self.data_func['c_s^2'] = lambda self : self.gamma*self.data('pres')/self.data('dens')
         self.data_func['c_s'] = lambda self : xp.sqrt(self.data('c_s^2'))
@@ -243,7 +246,7 @@ class AthenaData:
         self.data_func['vrot'] = lambda self : xp.sqrt(self.data('vtot^2')-self.data('velr')**2)
         self.data_func['momtot'] = lambda self : self.data('dens')*self.data('vtot')
         self.data_func['ekin'] = lambda self : 0.5*self.data('dens')*self.data('vtot^2')
-        self.data_func['etot'] = lambda self : self.data('ekin')+self.data('eint')
+        self.data_func['egas'] = lambda self : self.data('ekin')+self.data('eint')
         self.data_func['amx'] = lambda self : self.data('y')*self.data('velz')-self.data('z')*self.data('vely')
         self.data_func['amy'] = lambda self : self.data('z')*self.data('velx')-self.data('x')*self.data('velz')
         self.data_func['amz'] = lambda self : self.data('x')*self.data('vely')-self.data('y')*self.data('velx')
@@ -257,6 +260,9 @@ class AthenaData:
         self.data_func['ekflxr'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velr')
         self.data_func['ekflxrin'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velin')
         self.data_func['ekflxrout'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velout')
+        if not self.is_mhd:
+            for var in ('bcc1','bcc2','bcc3'):
+                self.data_func[var] = lambda self : self.data('zeros')
         self.data_func['bccx'] = lambda self : self.data('bcc1')
         self.data_func['bccy'] = lambda self : self.data('bcc2')
         self.data_func['bccz'] = lambda self : self.data('bcc3')
@@ -269,6 +275,12 @@ class AthenaData:
         self.data_func['v_A^2'] = lambda self : self.data('btot^2')/self.data('dens')
         self.data_func['v_A'] = lambda self : xp.sqrt(self.data('v_A^2'))
         self.data_func['beta'] = lambda self : self.data('pres')/self.data('btot^2')
+        self.data_func['pmag'] = lambda self : 0.5*self.data('btot^2')
+        self.data_func['emag'] = lambda self : 0.5*self.data('btot^2')
+        self.data_func['ptot'] = lambda self : self.data('pres')+self.data('pmag') if self.is_mhd\
+                                               else self.data('pres')
+        self.data_func['etot'] = lambda self : self.data('ekin')+self.data('eint')+self.data('emag') if self.is_mhd\
+                                               else self.data('ekin')+self.data('eint')
         return
 
     @property

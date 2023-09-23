@@ -1,7 +1,8 @@
 import numpy as np
 try:
     import cupy as xp
-except ImportError:
+    xp.array(0)
+except:
     import numpy as xp
 from numpy.linalg import inv
 from .. import units
