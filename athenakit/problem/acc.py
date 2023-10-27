@@ -137,15 +137,15 @@ def add_tran(ad):
         amx=ad.average('amx',where=where,weights='mass')
         amy=ad.average('amy',where=where,weights='mass')
         amz=ad.average('amz',where=where,weights='mass')
-    else:
+    if (amx==0.0 and amy==0.0 and amz==0.0):
         amx, amy, amz = 0.0, 0.0, 1.0
     def normal(vec):
-        return vec/xp.sqrt(xp.sum(vec**2))
-    disk_z = normal(xp.array([amx,amy,amz]))
-    y_01=xp.asarray([0,1])
-    disk_y=normal(xp.array([y_01[0],y_01[1],(-y_01[0]*disk_z[0]-y_01[1]*disk_z[1])/disk_z[2]]))
-    disk_x=normal(xp.cross(disk_y,disk_z))
-    ad.tran=inv(xp.stack((disk_x,disk_y,disk_z)).T)
+        return vec/np.sqrt(np.sum(vec**2))
+    disk_z = normal(np.array([amx,amy,amz]))
+    y_01=np.asarray([0,1])
+    disk_y=normal(np.array([y_01[0],y_01[1],(-y_01[0]*disk_z[0]-y_01[1]*disk_z[1])/disk_z[2]]))
+    disk_x=normal(np.cross(disk_y,disk_z))
+    ad.tran=inv(np.stack((disk_x,disk_y,disk_z)).T)
     return
 
 def add_data(ad,add_bcc=True):

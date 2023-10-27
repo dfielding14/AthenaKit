@@ -331,7 +331,7 @@ class AthenaData:
         ZYX=xp.meshgrid(z,y,x)
         return ZYX[2].swapaxes(0,1),ZYX[1].swapaxes(0,1),ZYX[0].swapaxes(0,1),dx,dy,dz
 
-    def get_refined_data(self,var,level=0,xyz=[]):
+    def get_uniform_data(self,var,level=0,xyz=[]):
         if (not xyz):
             xyz = [self.x1min,self.x1max,self.x2min,self.x2max,self.x3min,self.x3max]
         # block_level is physical level of mesh refinement
@@ -649,7 +649,7 @@ class AthenaData:
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
                    self.x2min/2**zoom,self.x2max/2**zoom,
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
-        return xp.average(self.get_refined_data(var,level=level,xyz=xyz),axis=axis),xyz
+        return xp.average(self.get_uniform_data(var,level=level,xyz=xyz),axis=axis),xyz
     
     #def get_slice(self,var='dens',normal='z',north='y',center=[0.,0.,0.],width=1,height=1,zoom=0,level=0):
     #    return
