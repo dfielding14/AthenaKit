@@ -36,6 +36,120 @@ n_t_e_ratio=n_t_h_ratio/n_e_h_ratio
 n_t_i_ratio=n_t_h_ratio/n_i_h_ratio
 ##############################################################
 
+class InitialCondition:
+    def __init__(self,m_bh,m_star,r_star,m_dm,r_dm,r_entropy,k_entropy,xi_entropy,x_0,dens_0,
+                 gamma=5.0/3.0,unit=grunit) -> None:
+        self.m_bh=m_bh
+        self.m_star=m_star
+        self.r_star=r_star
+        self.m_dm=m_dm
+        self.r_dm=r_dm
+        self.r_entropy=r_entropy
+        self.k_entropy=k_entropy
+        self.xi_entropy = xi_entropy
+        self.x_0=x_0
+        self.dens_0=dens_0
+        self.gamma=gamma
+        self.unit=unit
+        self.rs=dict()
+        pass
+    # profile solver
+    def NFWMass(self,r,ms,rs):
+        return ms*(np.log(1+r/rs)-r/(rs+r))
+    def NFWDens(self,r,ms,rs):
+        return ms/(4*np.pi*rs**3)/(r/rs*(1+r/rs)**2)
+    def StellarMass(self,r):
+        return self.NFWMass(r,self.m_star,self.r_star)
+    def StellarDens(self,r):
+        return self.NFWDens(r,self.m_star,self.r_star)
+    def DMmass(self,r):
+        return self.NFWMass(r,self.m_dm,self.r_dm)
+    def DMdens(self,r):
+        return self.NFWDens(r,self.m_dm,self.r_dm)
+    def TotMass(self,r):
+        return self.m_bh+self.StellarMass(r)+self.DMmass(r)
+    def Acceleration(self,r):
+        return -self.unit.grav_constant*(self.TotMass(r))/r**2
+    def DrhoDr(self,x,rho):
+        r = x*self.r_entropy
+        accel = self.r_entropy*self.Acceleration(r)
+        #print(accel)
+        #print(rho,gamma,xi)
+        gamma = self.gamma
+        xi = self.xi_entropy
+        k_0 = self.k_entropy
+        grad = (2*rho**(2-gamma)*accel/k_0-rho*xi*x**(xi-1))/((1+x**xi)*gamma)
+        return grad
+    def RK4(self,func,x,y,h):
+        k1=func(x,y)
+        x+=0.5*h
+        k2=func(x,y+0.5*k1*h)
+        k3=func(x,y+0.5*k2*h)
+        x+=0.5*h
+        k4=func(x,y+k3*h)
+        y+=1/6*(k1+2*k2+2*k3+k4)*h
+        return y
+    def solve(self,x0=None,dens0=None,N1=2048,N2=1024,logh=0.002):
+        if x0 is None:
+            x0 = self.x_0
+        if dens0 is None:
+            dens0 = self.dens_0
+        gamma = self.gamma
+        unit = self.unit
+        Ntotal=N1+N2
+        dens_arr = np.zeros(Ntotal)
+        dens = dens0
+        dens_arr[N1]=dens
+        for i in range(N1):
+            x = x0*10**(-i*logh)
+            h = x0*10**(-(i+1)*logh)-x
+            dens = self.RK4(self.DrhoDr,x,dens,h)
+            dens_arr[N1-i-1]=dens
+        dens = dens0
+        for i in range(N2-1):
+            x = x0*10**(i*logh)
+            h = x0*10**((i+1)*logh)-x
+            dens = self.RK4(self.DrhoDr,x,dens,h)
+            dens_arr[N1+i+1]=dens
+        xs=x0*np.logspace(-logh*N1,logh*(N2-1),Ntotal,endpoint=True)
+        pres_arr = 0.5*self.k_entropy*(1.0+pow(xs,self.xi_entropy))*pow(dens_arr,self.gamma)
+        ran=dict()
+        ran['r']=xs*self.r_entropy
+        ran['dens']=dens_arr
+        ran['pres']=pres_arr
+        ran['temp']=ran['pres']/ran['dens']
+        ran['eint']=ran['pres']/(gamma-1)
+        ran['entropy']=ran['pres']/ran['dens']**(5/3)
+        ran['mass']=self.TotMass(ran['r'])
+        ran['g']=self.Acceleration(ran['r'])
+        ran['t_ff']=np.pi/4.0*np.sqrt(2.*ran['r']/-ran['g'])
+        ran['v_ff']=np.sqrt(2.*ran['r']*-ran['g'])
+        ran['v_kep']=np.sqrt(ran['r']*-ran['g'])
+        ran['t_orbit']=2*np.pi*(np.sqrt(ran['r']/-ran['g']))
+        ran['Omega']=ran['v_kep']/ran['r']
+        ran['am_kep']=np.sqrt(ran['r']**3*-ran['g'])
+        ran['potential']=ran['r']*-ran['g']
+        ran['r_B']=self.unit.grav_constant*self.m_bh/(self.gamma*ran['temp'])
+        ran['Mdot_B']=np.pi*(self.unit.grav_constant*self.m_bh)**2*ran['dens']/(self.gamma*ran['temp'])**1.5
+        ran['tempK']=ran['temp']*unit.temperature_cgs
+        #ran['tcool']=1/(gamma-1)*ran['pres']*unit.pressure_cgs/(ran['dens']**2*CoolFnShure(ran['tempK']))/unit.time_cgs
+        ran['cooling_rate']=ran['dens']**2*kit.CoolFnShure(ran['tempK'])/unit.cooling_cgs/n_t_h_ratio**2
+        ran['tcool']=ran['eint']/(ran['dens']**2*kit.CoolFnShure(ran['tempK'])/unit.cooling_cgs/n_t_h_ratio**2)
+        ran['theat']=ran['pres']/(2e-4*ran['dens']*ran['r']**-1.5+0.95*0.0716455*ran['dens']*(ran['r']+2.0)**-1.5)
+        #ran['tcool_c']=1/(gamma-1)*1e5/unit.temperature_cgs/(ran['dens']*CoolFnShure(1e5))/unit.time_cgs
+        ran['tcool_c']=1/(gamma-1)*1e4/unit.temperature_cgs/(1e2*ran['dens']/ran['dens']*kit.CoolFnShure(1e4)/unit.cooling_cgs)
+        ran['theat_c']=1/(gamma-1)*1e5/unit.temperature_cgs/(2e-4*ran['r']**-1.5+0.95*0.0716455*(ran['r']+2.0)**-1.5)
+        Mdot_B=ran['Mdot_B'][0]
+        ran['v_inflow']=Mdot_B/(4*np.pi*ran['dens']*ran['r']**2)
+        ran['t_inflow']=ran['r']/ran['v_inflow']
+        self.rs=ran
+        return ran
+    
+    def __call__(self, key):
+        if not self.rs:
+            self.solve()
+        return self.rs[key]
+
 def add_tools(ad):
     ad.rin = ad.header('problem','r_in',float)
     ad.rmin = float(asnumpy(np.min(ad.data('r').min())))
@@ -61,74 +175,11 @@ def add_tools(ad):
     gamma=5.0/3.0
     k0_entry=ad.header('problem','k0_entry',float)
     xi_entry=ad.header('problem','xi_entry',float)
-    
-    def accel(r,m=m_bh,mc=m_star,rc=r_star,ms=m_dm,rs=r_dm,g=ad.unit.grav_constant):
-        return kit.Acceleration(r,m,mc,rc,ms,rs,g)
 
-    ad.accel = accel
-    
-    # profile solver
-    def NFWMass(r,ms,rs):
-        return ms*(np.log(1+r/rs)-r/(rs+r))
-    def TotMass(r,m=m_bh,mc=m_star,rc=r_star,ms=m_dm,rs=r_dm):
-        return m+NFWMass(r,mc,rc)+NFWMass(r,ms,rs)
-    def Acceleration(r,m,mc,rc,ms,rs,g):
-        return -g*(TotMass(r,m,mc,rc,ms,rs))/r**2
-    def DrhoDr(x,rho):
-        r = x*rad_entry
-        accel = rad_entry*Acceleration(r,m_bh,m_star,r_star,m_dm,r_dm,ad.unit.grav_constant)
-        #print(accel)
-        #print(rho,gamma,xi)
-        grad = (2*rho**(2-gamma)*accel/k0_entry-rho*xi_entry*x**(xi_entry-1))/((1+x**xi_entry)*gamma)
-        return grad
-    def RK4(func,x,y,h):
-        k1=func(x,y)
-        x+=0.5*h
-        k2=func(x,y+0.5*k1*h)
-        k3=func(x,y+0.5*k2*h)
-        x+=0.5*h
-        k4=func(x,y+k3*h)
-        y+=1/6*(k1+2*k2+2*k3+k4)*h
-        return y
-    def SolveDens(N1=1024,N2=1024,logh=0.002):
-        N=N1+N2
-        dens_arr = np.zeros(N)
-        dens = dens_entry
-        dens_arr[N1]=dens
-        for i in range(N1):
-            x = 10**(-i*logh)
-            h = 10**(-(i+1)*logh)-x
-            dens = RK4(DrhoDr,x,dens,h)
-            dens_arr[N1-i-1]=dens
-        dens = dens_entry
-        for i in range(N2-1):
-            x = 10**(i*logh)
-            h = 10**((i+1)*logh)-x
-            dens = RK4(DrhoDr,x,dens,h)
-            dens_arr[N1+i+1]=dens
-        xs=np.logspace(-logh*N1,logh*(N2-1),N,endpoint=True)
-        pres_arr = 0.5*k0_entry*(1.0+pow(xs,xi_entry))*pow(dens_arr,gamma)
-        rss=dict()
-        rss['r']=xs*rad_entry
-        rss['dens']=dens_arr
-        rss['pres']=pres_arr
-        rss['temp']=rss['pres']/rss['dens']
-        rss['entropy']=rss['pres']/rss['dens']**(gamma)
-        return rss
-
-    # solve
-    ran=SolveDens(N1=2000,N2=1000,logh=0.004)
-    ran['mass']=TotMass(ran['r'],m_bh,m_star,r_star,m_dm,r_dm)
-    ran['g']=Acceleration(ran['r'],m_bh,m_star,r_star,m_dm,r_dm,ad.unit.grav_constant)
-    ran['t_ff']=np.pi/4.0*np.sqrt(2.*ran['r']/-ran['g'])
-    ran['v_ff']=np.sqrt(2.*ran['r']*-ran['g'])
-    ran['v_kep']=np.sqrt(ran['r']*-ran['g'])
-    ran['Omega']=ran['v_kep']/ran['r']
-    ran['am_kep']=np.sqrt(ran['r']**3*-ran['g'])
-    ran['potential']=ran['r']*-ran['g']
-    ran['r_B']=ad.unit.grav_constant*m_bh/(gamma*ran['temp'])
-    ran['Mdot_B']=np.pi*(ad.unit.grav_constant*m_bh)**2*ran['dens']/(gamma*ran['temp'])**1.5
-    ad.rad_initial=ran
+    ad.ic = InitialCondition(m_bh,m_star,r_star,m_dm,r_dm,rad_entry,k0_entry,xi_entry,1.0,dens_entry,gamma=gamma,unit=ad.unit)
+    ad.ic.solve(N1=2000,N2=1000,logh=0.004)
+    ad.rad_initial = ad.ic.rs
+    ad.accel = ad.ic.Acceleration
     return
 
 def add_tran(ad):

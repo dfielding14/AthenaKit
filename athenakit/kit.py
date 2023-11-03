@@ -121,38 +121,7 @@ def CoolFnShure(T):
     cool_rate[loc_w] = 10.0**logt2logc(logt[loc_w]) 
     return cool_rate
 
-# parameters
-gamma       = 5/3     # gamma
-potential   = 1       # turn on potential
-m_bh        = 4.3e2   # BH mass: 6.5e9 Msun # Mass unit: 1.516e7 Msun
-r_in        = 0.0     # inner radius: 100 pc
-m_star      = 2e4     # 3e11 Msun # Mass unit: 1.516e7 Msun
-r_star      = 2.0     # 2kpc
-m_dm        = 2.0e6   # DM Mass: 3.0e13 Msun # Mass unit: 1.516e7 Msun
-r_dm        = 60.0    # 60kpc
-sink_d      = 1e-2    # density of sink cells
-sink_t      = 1e-1    # eint/dens=1/gm1*T: temperature of sink cells
-rad_entry   = 2.0
-dens_entry  = 1e-1
-#k_0         = 1.0
-#xi          = 1.75
-k_0         = 1.1
-xi          = 1.1
-
 # profile solver
-def NFWMass(r,ms,rs):
-    return ms*(np.log(1+r/rs)-r/(rs+r))
-def TotMass(r,m=m_bh,mc=m_star,rc=r_star,ms=m_dm,rs=r_dm):
-    return m+NFWMass(r,mc,rc)+NFWMass(r,ms,rs)
-def Acceleration(r,m,mc,rc,ms,rs,g):
-    return -g*(TotMass(r,m,mc,rc,ms,rs))/r**2
-def DrhoDr(x,rho):
-    r = x*rad_entry
-    accel = rad_entry*Acceleration(r,m_bh,m_star,r_star,m_dm,r_dm,unit.grav_constant)
-    #print(accel)
-    #print(rho,gamma,xi)
-    grad = (2*rho**(2-gamma)*accel/k_0-rho*xi*x**(xi-1))/((1+x**xi)*gamma)
-    return grad
 def RK4(func,x,y,h):
     k1=func(x,y)
     x+=0.5*h
@@ -162,44 +131,10 @@ def RK4(func,x,y,h):
     k4=func(x,y+k3*h)
     y+=1/6*(k1+2*k2+2*k3+k4)*h
     return y
-def SolveDens(N=2048,logh=0.002):
-    N2=int(N/2)
-    dens_arr = np.zeros(N)
-    dens = dens_entry
-    dens_arr[N2]=dens
-    for i in range(N2):
-        x = 10**(-i*logh)
-        h = 10**(-(i+1)*logh)-x
-        dens = RK4(DrhoDr,x,dens,h)
-        dens_arr[N2-i-1]=dens
-    dens = dens_entry
-    for i in range(N2-1):
-        x = 10**(i*logh)
-        h = 10**((i+1)*logh)-x
-        dens = RK4(DrhoDr,x,dens,h)
-        dens_arr[N2+i+1]=dens
-    xs=np.logspace(-logh*N2,logh*(N2-1),N,endpoint=True)
-    pres_arr = 0.5*k_0*(1.0+pow(xs,xi))*pow(dens_arr,gamma)
-    rss=dict()
-    rss['r']=xs*rad_entry
-    rss['dens']=dens_arr
-    rss['pres']=pres_arr
-    rss['temp']=rss['pres']/rss['dens']
-    rss['entropy']=rss['pres']/rss['dens']**(5/3)
-    return rss
-
-# solve
-ran=SolveDens(N=12000)
-ran['mass']=TotMass(ran['r'],m_bh,m_star,r_star,m_dm,r_dm)
-ran['g']=Acceleration(ran['r'],m_bh,m_star,r_star,m_dm,r_dm,unit.grav_constant)
-ran['t_ff']=np.pi/4.0*np.sqrt(2.*ran['r']/-ran['g'])
-ran['v_ff']=np.sqrt(2.*ran['r']*-ran['g'])
-ran['v_kep']=np.sqrt(ran['r']*-ran['g'])
-ran['Omega']=ran['v_kep']/ran['r']
-ran['am_kep']=np.sqrt(ran['r']**3*-ran['g'])
-ran['potential']=ran['r']*-ran['g']
-ran['r_B']=unit.grav_constant*m_bh/(gamma*ran['temp'])
-ran['Mdot_B']=np.pi*(unit.grav_constant*m_bh)**2*ran['dens']/(gamma*ran['temp'])**1.5
+def NFWMass(r,ms,rs):
+    return ms*(np.log(1+r/rs)-r/(rs+r))
+def NFWDens(r,ms,rs):
+    return ms/(4*np.pi*rs**3)/(r/rs*(1+r/rs)**2)
 
 ##########################################################################################
 ## cooling time as a function of temperature and density

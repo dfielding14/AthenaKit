@@ -25,7 +25,8 @@ pc_cgs = parsec_cgs = 3.0856775809623245e+18                  # cm
 kpc_cgs = 3.0856775809623245e+21                              # cm
 Mpc_cgs = 3.0856775809623245e+24                              # cm
 yr_cgs = CONST_YR_cgs = 3.15576e+7                            # s
-myr_cgs = CONST_MYR_cgs = 3.15576e+13                         # s
+kyr_cgs = CONST_KYR_cgs = 3.15576e+10                         # s
+myr_cgs = Myr_cgs = CONST_MYR_cgs = 3.15576e+13               # s
 msun_cgs = Msun_cgs = CONST_SOLAR_MASS_cgs = 1.98841586e+33   # g
 rsun_cgs = Rsun_cgs = CONST_SOLAR_RADIUS_cgs = 6.957e10       # cm
 Lsun_cgs = CONST_SOLAR_LUMINOSITY_cgs = 3.846e33              # erg/s
