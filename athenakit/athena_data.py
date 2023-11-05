@@ -139,8 +139,10 @@ class AthenaData:
         self.time = self.h5file.attrs['Time']
         self.cycle = self.h5file.attrs['NumCycles']
         self.n_mbs = self.h5file.attrs['NumMeshBlocks']
-        self.mb_logical = xp.append(self.h5dic['LogicalLocations'],self.h5dic['Levels'].reshape(-1,1),axis=1)
-        self.mb_geometry = xp.asarray([self.h5dic['x1f'][:,0],self.h5dic['x1f'][:,-1],
+        # @mhguo: using numpy here because cupy would be very slow when
+        # accessing mb_logical and mb_geometry later (in data_uniform())
+        self.mb_logical = np.append(self.h5dic['LogicalLocations'],self.h5dic['Levels'].reshape(-1,1),axis=1)
+        self.mb_geometry = np.asarray([self.h5dic['x1f'][:,0],self.h5dic['x1f'][:,-1],
                                        self.h5dic['x2f'][:,0],self.h5dic['x2f'][:,-1],
                                        self.h5dic['x3f'][:,0],self.h5dic['x3f'][:,-1],]).T
         n_var_read = 0
@@ -152,7 +154,7 @@ class AthenaData:
         return
 
     def config(self):
-        if (self.data_raw and not self.coord): self.set_coord()
+        if (self.data_raw and not self.coord): self.config_coord()
         self._config_data_func()
         self.path = str(Path(self.filename).parent)
         self.num = int(self.filename.split('.')[-2])
@@ -200,7 +202,7 @@ class AthenaData:
         
         return
     
-    def set_coord(self):
+    def config_coord(self):
         mb_geo, n_mbs = self.mb_geometry, self.n_mbs
         nx1, nx2, nx3 = self.nx1, self.nx2, self.nx3
         x=xp.swapaxes(xp.linspace(mb_geo[:,0],mb_geo[:,1],nx1+1),0,1)
@@ -306,8 +308,7 @@ class AthenaData:
             return var
 
     ### get data in a single array ###
-    # TODO(@mhguo): deal with the cell center and cell edge issue
-    def get_refined_coord(self,level=0,xyz=[]):
+    def cell_faces(self,level=0,xyz=[]):
         if (not xyz):
             xyz = [self.x1min,self.x1max,self.x2min,self.x2max,self.x3min,self.x3max]
         # level is physical level
@@ -320,18 +321,22 @@ class AthenaData:
         j_max = int((xyz[3]-self.x2min)*nx2_fac)
         k_min = int((xyz[4]-self.x3min)*nx3_fac)
         k_max = int((xyz[5]-self.x3min)*nx3_fac)
-        # TODO(@mhguo)
-        #data = xp.zeros((k_max-k_min, j_max-j_min, i_max-i_min))
-        x=xp.linspace(xyz[0],xyz[1],i_max-i_min)
-        y=xp.linspace(xyz[2],xyz[3],j_max-j_min)
-        z=xp.linspace(xyz[4],xyz[5],k_max-k_min)
-        dx=(xyz[1]-xyz[0])/(i_max-i_min)
-        dy=(xyz[3]-xyz[2])/(j_max-j_min)
-        dz=(xyz[5]-xyz[4])/(k_max-k_min)
-        ZYX=xp.meshgrid(z,y,x)
-        return ZYX[2].swapaxes(0,1),ZYX[1].swapaxes(0,1),ZYX[0].swapaxes(0,1),dx,dy,dz
+        xf=xp.linspace(xyz[0],xyz[1],i_max-i_min+1)
+        yf=xp.linspace(xyz[2],xyz[3],j_max-j_min+1)
+        zf=xp.linspace(xyz[4],xyz[5],k_max-k_min+1)
+        return xf,yf,zf
+    
+    def cell_centers(self,level=0,xyz=[]):
+        xf,yf,zf=self.cell_faces(level,xyz)
+        xc,yc,zc=0.5*(xf[:-1]+xf[1:]),0.5*(yf[:-1]+yf[1:]),0.5*(zf[:-1]+zf[1:])
+        return xc,yc,zc
 
-    def get_uniform_data(self,var,level=0,xyz=[]):
+    def coord_uniform(self,level=0,xyz=[]):
+        xc,yc,zc=self.cell_centers(level,xyz)
+        ZYX=xp.meshgrid(zc,yc,xc)
+        return ZYX[2].swapaxes(0,1),ZYX[1].swapaxes(0,1),ZYX[0].swapaxes(0,1)
+
+    def data_uniform(self,var,level=0,xyz=[]):
         if (not xyz):
             xyz = [self.x1min,self.x1max,self.x2min,self.x2max,self.x3min,self.x3max]
         # block_level is physical level of mesh refinement
@@ -351,7 +356,7 @@ class AthenaData:
             block_level = self.mb_logical[nmb,-1]
             block_loc = self.mb_logical[nmb,:3]
             block_data = raw[nmb]
-            
+
             # Prolongate coarse data and copy same-level data
             if (block_level <= physical_level):
                 s = int(2**(physical_level - block_level))
@@ -379,6 +384,7 @@ class AthenaData:
                 ju_d = min(ju_d, j_max) - j_min
                 ku_d = min(ku_d, k_max) - k_min
                 if s > 1:
+                    # TODO(@mhguo): this seems to be the bottleneck of performance
                     if self.Nx1 > 1:
                         block_data = xp.repeat(block_data, s, axis=2)
                     if self.Nx2 > 1:
@@ -420,22 +426,24 @@ class AthenaData:
                 if self.Nx1 > 1:
                     il_s *= s
                     iu_s *= s
-                    num_extended_dims += 1
                 if self.Nx2 > 1:
                     jl_s *= s
                     ju_s *= s
-                    num_extended_dims += 1
                 if self.Nx3 > 1:
                     kl_s *= s
                     ku_s *= s
-                    num_extended_dims += 1
                 
                 # Calculate fine-level offsets
-                io_vals = range(s) if self.Nx1 > 1 else (0,)
-                jo_vals = range(s) if self.Nx2 > 1 else (0,)
-                ko_vals = range(s) if self.Nx3 > 1 else (0,)
+                io_s = s if self.Nx1 > 1 else 1
+                jo_s = s if self.Nx2 > 1 else 1
+                ko_s = s if self.Nx3 > 1 else 1
 
                 # Assign values
+                data[kl_d:ku_d,jl_d:ju_d,il_d:iu_d] = block_data[kl_s:ku_s,jl_s:ju_s,il_s:iu_s]\
+                    .reshape(ku_d-kl_d,ko_s,ju_d-jl_d,jo_s,iu_d-il_d,io_s)\
+                    .mean(axis=(1,3,5))
+                continue
+
                 for ko in ko_vals:
                     for jo in jo_vals:
                         for io in io_vals:
@@ -445,7 +453,13 @@ class AthenaData:
                                                                 il_s+io:iu_s:s]\
                                                                 /(s**num_extended_dims)
         return data
-    
+
+    def axis_index(self,axis):
+        if (axis=='z'): return 0
+        if (axis=='y'): return 1
+        if (axis=='x'): return 2
+        raise ValueError(f"axis '{axis}' not supported")
+
     # helper functions similar to numpy/cupy
     def sum(self,var,**kwargs):
         return asnumpy(xp.sum(self.data(var),**kwargs))
@@ -623,8 +637,8 @@ class AthenaData:
             self.profs[key] = {}
         self.profs[key].update(self.get_profile2d(bin_varl,varl,bins=bins,weights=weights,**kwargs))
 
-    # TODO(@mhguo): use profile 2d now, need to change to a real slice!
-    def set_slice(self,bin_varl,varl,key=None,**kwargs):
+    # TODO(@mhguo): remove later when the new version is stable
+    def set_slice_by_profile(self,bin_varl,varl,key=None,**kwargs):
         key = 'z' if key is None else key
         if key not in self.slices.keys():
             self.slices[key] = {}
@@ -635,44 +649,64 @@ class AthenaData:
     #def set_radial(self,varl=['dens','temp','velr','mflxr'],bins=256,scales='log',weights='vol',**kwargs):
     #    self.profs.update(self.get_radial(varl,bins=bins,scales=scales,weights=weights,**kwargs))
 
-    def get_slice_coord(self,zoom=0,level=0,xyz=[],axis=0):
+    def get_slice_faces(self,zoom=0,level=0,xyz=[],axis='z'):
         if (not xyz):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
                    self.x2min/2**zoom,self.x2max/2**zoom,
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
-        x,y,z,dx,dy,dz=self.get_refined_coord(level=level,xyz=xyz)
-        return xp.average(x,axis=axis),xp.average(y,axis=axis),xp.average(z,axis=axis),xyz
+        x,y,z=self.cell_faces(level=level,xyz=xyz)
+        if (axis=='z'): return asnumpy({'x':x,'y':y})
+        elif (axis=='y'): return asnumpy({'x':x,'z':z})
+        else: return asnumpy({'y':y,'z':z})
+    
+    def get_slice_centers(self,zoom=0,level=0,xyz=[],axis='z'):
+        dic = self.get_slice_faces(zoom=zoom,level=level,xyz=xyz,axis=axis)
+        return asnumpy({v:(edge[:-1]+edge[1:])/2 for v,edge in dic.items()})
+
+    def get_slice_coord(self,zoom=0,level=0,xyz=[],axis='z'):
+        if (not xyz):
+            xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
+                   self.x2min/2**zoom,self.x2max/2**zoom,
+                   self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
+        x,y,z=self.coord_uniform(level=level,xyz=xyz)
+        axis = self.axis_index(axis)
+        return asnumpy({'x':xp.average(x,axis=axis),'y':xp.average(y,axis=axis),'z':xp.average(z,axis=axis)})
 
     # TODO(@mhguo): we should have the ability to get slice at any position with any direction
-    def get_slice(self,var='dens',zoom=0,level=0,xyz=[],axis=0):
+    def slice(self,var='dens',zoom=0,level=0,xyz=[],axis='z'):
         if (not xyz):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
                    self.x2min/2**zoom,self.x2max/2**zoom,
                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
-        return xp.average(self.get_uniform_data(var,level=level,xyz=xyz),axis=axis),xyz
+        axis = self.axis_index(axis)
+        return asnumpy({var:xp.average(self.data_uniform(var,level=level,xyz=xyz),axis=axis)})
     
-    #def get_slice(self,var='dens',normal='z',north='y',center=[0.,0.,0.],width=1,height=1,zoom=0,level=0):
+    def get_slice(self,varl,**kwargs):
+        slices = {}
+        slices['edges'] = self.get_slice_faces(**kwargs)
+        slices['centers'] = self.get_slice_centers(**kwargs)
+        #slices.update(self.get_slice_coord(**kwargs))
+        for var in varl:
+            slices.update(self.slice(var,**kwargs))
+        return slices
+    
+    def set_slice(self,varl,key='z',**kwargs):
+        if key not in self.slices.keys():
+            self.slices[key] = {}
+        self.slices[key].update(self.get_slice(varl,**kwargs))
+    
+    #def slice(self,var='dens',normal='z',north='y',center=[0.,0.,0.],width=1,height=1,zoom=0,level=0):
     #    return
 
-    '''def set_slice(self,varl=['dens','temp'],varsuf='',zoom=0,level=0,xyz=[],axis=0,redo=False):
-        for var in varl:
-            varname = var+varsuf
-            if (redo or varname not in self.slices.keys()):
-                self.slices[varname] = {}
-                data = self.get_slice(var,zoom=zoom,level=level,xyz=xyz,axis=axis)
-                self.slices[varname]['dat'] = data[0]
-                self.slices[varname]['xyz'] = data[1]
-    '''
-
-    def plot_snapshot(self,var='dens',data=None,varname='',zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
-                   title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
+    # TODO(@mhguo): remove later when the new version is stable, or as a alias of plot_slice
+    def plot_snapshot_old(self,var='dens',data=None,varname='',zoom=0,level=0,xyz=[],unit=1.0,\
+                   title='',label='',xlabel='X',ylabel='Y',cmap='viridis',aspect='equal',shading='nearest',\
                    norm='log',save=False,figdir='../figure/Simu_',figpath=None,\
                    savepath='',savelabel='',figlabel='',dpi=200,vec=None,stream=None,circle=True,\
-                   fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,stream_color='k',stream_linewidth=None,\
+                   fig=None,ax=None,xyunit=1.0,colorbar=True,returnall=False,stream_color='k',stream_linewidth=None,\
                    stream_arrowsize=None,vecx='velx',vecy='vely',vel_method='ave',axis=0,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
-        bins=int(xp.min(xp.asarray([self.Nx1,self.Nx2,self.Nx3]))) if not bins else bins
         varname = var+f'_{zoom}' if not varname else varname
         if (not xyz):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
@@ -685,18 +719,18 @@ class AthenaData:
             slc = self.slices[varname]['dat']*unit
             xyz = list(self.slices[varname]['xyz'])
         else:
-            slc = self.get_slice(var,zoom=zoom,level=level,xyz=xyz,axis=axis)[0]*unit
-        x0,x1,y0,y1,z0,z1 = xyz[0],xyz[1],xyz[2],xyz[3],xyz[4],xyz[5]
+            slc = self.get_slice(var,zoom=zoom,level=level,xyz=xyz,axis=axis)[var]*unit
+        #x0,x1,y0,y1,z0,z1 = xyz[0],xyz[1],xyz[2],xyz[3],xyz[4],xyz[5]
         if (vec is not None):
-            x,y,z = self.get_slice_coord(zoom=zoom,level=vec,xyz=list(xyz),axis=axis)[:3]
+            x,y,z = self.get_slice_coord(zoom=zoom,level=vec,xyz=list(xyz),axis=axis).values()
             if (f'{vecx}_{zoom}' in self.slices.keys()):
                 u = self.slices[f'{vecx}_{zoom}']['dat']
             else:
-                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
+                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[vecx]
             if (f'{vecy}_{zoom}' in self.slices.keys()):
                 v = self.slices[f'{vecy}_{zoom}']['dat']
             else:
-                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
+                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[vecy]
             #x = self.get_slice('x',zoom=zoom,level=vel,xyz=xyz)[0]
             #y = self.get_slice('y',zoom=zoom,level=vel,xyz=xyz)[0]
             fac=max(int(2**(level-vec)),1)
@@ -708,45 +742,43 @@ class AthenaData:
             else:
                 u=u[int(fac/2)::fac,int(fac/2)::fac]
                 v=v[int(fac/2)::fac,int(fac/2)::fac]
+            if(axis==1): x,y = z,x
             if(axis==2): x,y = y,z
-            x,y,u,v = asnumpy(x),asnumpy(y),asnumpy(u),asnumpy(v)
             ax.quiver(x*xyunit, y*xyunit, u, v)
         if (stream is not None):
-            x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz,axis=axis)[:3]
+            x,y,z = self.get_slice_coord(zoom=zoom,level=stream,xyz=xyz,axis=axis).values()
             #x = self.get_slice('x',zoom=zoom,level=stream,xyz=xyz)[0]
             #y = self.get_slice('y',zoom=zoom,level=stream,xyz=xyz)[0]
             if (f'{vecx}_{zoom}' in self.slices.keys()):
                 u = self.slices[f'{vecx}_{zoom}']['dat']
             else:
-                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
+                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[vecx]
             if (f'{vecy}_{zoom}' in self.slices.keys()):
                 v = self.slices[f'{vecy}_{zoom}']['dat']
             else:
-                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[0]
-            #x,y=xp.meshgrid(x,y)
-            #z,x=xp.meshgrid(z,x)
-            #xp.mgrid[-w:w:100j, -w:w:100j]
-            #beg=8
-            #step=16
-            #ax.streamplot(x[beg::step,beg::step], z[beg::step,beg::step], (u[0]/norm[0])[beg::step,beg::step], (v[0]/norm[0])[beg::step,beg::step])
-            #print(x.shape,y.shape,u.shape,v.shape)
+                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=list(xyz),axis=axis)[vecy]
             # TODO(@mhguo): fix axis=1 case!
-            #if(axis==1): x,y = z.swapaxes(0,1), x.swapaxes(0,1)
+            if(axis==1): x,y = z.T, x.T
+            #if(axis==1): x,y = z,x
             if(axis==2): x,y = y,z
-            x,y,u,v = asnumpy(x),asnumpy(y),asnumpy(u),asnumpy(v)
             ax.streamplot(x*xyunit, y*xyunit, u, v,color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
         # TODO(@mhguo): fix axis=1 case!
         #if(axis==1): x0,x1,y0,y1 = z0,z1,x0,x1
-        if(axis==2): x0,x1,y0,y1 = y0,y1,z0,z1
-        im_arr = asnumpy(slc[::-1,:])
+        #if(axis==2): x0,x1,y0,y1 = y0,y1,z0,z1
+        """im_arr = asnumpy(slc[::-1,:])
         im=ax.imshow(im_arr,extent=(x0*xyunit,x1*xyunit,y0*xyunit,y1*xyunit),\
-            norm=norm,cmap=cmap,**kwargs)
+            norm=norm,cmap=cmap,**kwargs)"""
+        x,y,z = self.get_slice_coord(zoom=zoom,level=level,xyz=list(xyz),axis=axis).values()
+        if(axis==1): x,y = z.T, x.T
+        if(axis==2): x,y = y,z
+        im=ax.pcolormesh(x*xyunit,y*xyunit,slc,norm=norm,cmap=cmap,shading=shading,**kwargs)
         #im=ax.imshow(slc.swapaxes(0,1)[::-1,:],extent=(x0,x1,y0,y1),norm=norm,cmap=cmap,**kwargs)
         #im=ax.imshow(xp.rot90(data),cmap='plasma',norm=LogNorm(0.9e-1,1.1e1),extent=extent)
         if(circle and self.header('problem','r_in')):
             ax.add_patch(plt.Circle((0,0),float(self.header('problem','r_in')),ec='k',fc='#00000000'))
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
+        ax.set_aspect(aspect)
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
         if (colorbar):
             from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -759,19 +791,19 @@ class AthenaData:
                 os.mkdir(figpath)
             fig.savefig(f"{figpath}fig_{varname+figlabel if not savelabel else savelabel}_{self.num:04d}.png"\
                         if not savepath else savepath, bbox_inches='tight')
-        if (returnim):
+        if (returnall):
             return fig,im
         return fig
 
     # plot is only for plot, accept the data array
     def plot_image(self,x,y,img,title='',label='',xlabel='X',ylabel='Y',xscale='linear',yscale='linear',\
                    cmap='viridis',norm='log',save=False,figfolder=None,figlabel='',figname='',\
-                   dpi=200,fig=None,ax=None,colorbar=True,returnim=False,aspect='auto',**kwargs):
+                   dpi=200,fig=None,ax=None,colorbar=True,returnall=False,aspect='auto',shading='nearest',**kwargs):
         fig = plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         img = asnumpy(img[:,:])
         #print(x,y,img)
-        im=ax.pcolormesh(x,y,img,norm=norm,cmap=cmap,**kwargs)
+        im=ax.pcolormesh(x,y,img,norm=norm,cmap=cmap,shading=shading,**kwargs)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_xscale(xscale)
@@ -788,14 +820,14 @@ class AthenaData:
                 os.mkdir(figfolder)
             fig.savefig(f"{figfolder}/fig_{figlabel}_{self.num:04d}.png"\
                         if not figname else figname, bbox_inches='tight')
-        if (returnim):
+        if (returnall):
             return fig,im
         return fig
 
     def plot_stream(self,dpi=200,fig=None,ax=None,x=None,y=None,u=None,v=None,
-                    xyunit=1.0,stream_color='k',stream_linewidth=None,stream_arrowsize=None):
+                    xyunit=1.0,color='k',linewidth=None,arrowsize=None):
         fig=plt.figure(dpi=dpi) if fig is None else fig
-        ax.streamplot(x*xyunit, y*xyunit, u, v, color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
+        ax.streamplot(x*xyunit, y*xyunit, u, v, color=color,linewidth=linewidth,arrowsize=arrowsize)
         return fig
 
     def plot_phase(self,varname='dens_temp',key='vol',bins=128,weights='vol',title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
@@ -820,7 +852,7 @@ class AthenaData:
         x =  x*xunit+xshift
         y =  y*yunit+yshift
         fig,im=self.plot_image(x,y,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,xscale=xscale,yscale=yscale,\
-                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=varname,figname=savepath,fig=fig,ax=ax,returnim=True,**kwargs)
+                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=varname,figname=savepath,fig=fig,ax=ax,returnall=True,**kwargs)
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
         if (colorbar):
             from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -835,11 +867,12 @@ class AthenaData:
                         if not savepath else savepath, bbox_inches='tight')
         return fig
     
-    def plot_slice(self,var='dens',key=None,data=None,zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
+    # TODO(@mhguo): maybe remove later when the new version is stable
+    def plot_slice_by_prof(self,var='dens',key=None,data=None,zoom=0,level=0,xyz=[],unit=1.0,bins=None,\
                    title='',label='',xlabel='X',ylabel='Y',cmap='viridis',\
                    norm='log',save=False,figdir='../figure/Simu_',figpath=None,\
                    savepath='',savelabel='',figlabel='',dpi=200,vec=None,stream=None,circle=True,\
-                   fig=None,ax=None,xyunit=1.0,colorbar=True,returnim=False,stream_color='k',stream_linewidth=1.0,\
+                   fig=None,ax=None,xyunit=1.0,colorbar=True,returnall=False,stream_color='k',stream_linewidth=1.0,\
                    stream_arrowsize=1.0,vecx='velx',vecy='vely',vel_method='ave',aspect='equal',**kwargs):
         fig = plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
@@ -856,7 +889,7 @@ class AthenaData:
             u,v = self.slices[key][vecx].T,self.slices[key][vecy].T
             ax.streamplot(xc*xyunit, yc*xyunit, u, v,color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
         fig,im=self.plot_image(x*xyunit,y*xyunit,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,aspect=aspect,\
-                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=var,figname=savepath,fig=fig,ax=ax,returnim=True,**kwargs)
+                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=var,figname=savepath,fig=fig,ax=ax,returnall=True,**kwargs)
         if (vec):
             u,v = self.slices[key][vecx].T,self.slices[key][vecy].T
             ax.quiver(xc*xyunit, yc*xyunit, u, v)
@@ -868,8 +901,68 @@ class AthenaData:
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="4%", pad=0.02)
             fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
-        if (returnim):
+        if (returnall):
             return fig,im
+        return fig
+
+    # get snapshot data
+    def get_slice_for_plot(self,key=None,var='dens',vec=None,stream=None,vecx='velx',vecy='vely',zoom=0,level=0,xyz=[],unit=1.0,xyunit=1.0,axis='z'):
+        if key is None:
+            slice=self.get_slice(varl=[var,vecx,vecy],zoom=zoom,level=level,xyz=xyz,axis=axis)
+        else:
+            slice=self.slices[key]
+        x,y = slice['centers'].values()
+        x,y = x*xyunit,y*xyunit
+        c = slice[var]*unit
+        u,v = None,None
+        if (vec is not None or stream is not None):
+            u,v = slice[vecx],slice[vecy]
+        """else:
+            if (not xyz):
+                xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
+                    self.x2min/2**zoom,self.x2max/2**zoom,
+                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
+            x,y,z=self.get_slice_coord(zoom=zoom,level=level,xyz=xyz,axis=axis).values()
+            x,y,z=x*xyunit,y*xyunit,z*xyunit
+            c = self.get_slice(var,zoom=zoom,level=level,xyz=xyz,axis=axis)[var]*unit
+            u,v = None,None
+            if (vec is not None or stream is not None):
+                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=xyz,axis=axis)[vecx]
+                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=xyz,axis=axis)[vecy]
+            if(axis==1): 
+                x,y,c,u,v = z.T,x.T,c.T,u.T,v.T
+            if(axis==2): 
+                x,y,c,u,v = y,z,c,u,v"""
+        return x,y,c,u,v
+
+    def plot_slice(self,key=None,var='dens',vec=None,stream=None,vecx='velx',vecy='vely',
+                   zoom=0,level=0,xyz=[],unit=1.0,xyunit=1.0,axis='z',
+                   fig=None,ax=None,dpi=200,norm='log',cmap='viridis',aspect='equal',
+                   xlabel=None,ylabel=None,title='',label='',colorbar=True,shading='nearest',
+                   quiver_para=dict(),stream_para={},
+                   returnall=False,**kwargs):
+        fig=plt.figure(dpi=dpi) if fig is None else fig
+        ax = plt.axes() if ax is None else ax
+        x,y,c,u,v = self.get_slice_for_plot(key=key,var=var,vec=vec,stream=stream,vecx=vecx,vecy=vecy,
+                                            zoom=zoom,level=level,xyz=xyz,unit=unit,xyunit=xyunit,axis=axis)
+        quiver,strm = None,None
+        if (vec is not None):
+            quiver = ax.quiver(x,y,u,v,**quiver_para)
+        if (stream is not None):
+            strm_para=dict(color='k',linewidth=1.0,arrowsize=1.0)
+            strm_para.update(stream_para)
+            strm = ax.streamplot(x,y,u,v,**strm_para)
+        #im=ax.pcolormesh(x,y,c,norm=norm,cmap=cmap,shading=shading,**kwargs)
+        fig,im = self.plot_image(x,y,c,fig=fig,ax=ax,dpi=dpi,norm=norm,cmap=cmap,aspect=aspect,
+                                 xlabel=xlabel,ylabel=ylabel,title=title,label=label,shading=shading,
+                                 colorbar=colorbar,returnall=True,**kwargs)
+        if (colorbar):
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="4%", pad=0.02)
+            fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
+        if (returnall):
+            return fig,ax,im,quiver,strm
         return fig
 
 class AthenaDataSet:
