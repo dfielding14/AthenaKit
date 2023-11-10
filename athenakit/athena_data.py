@@ -50,7 +50,11 @@ class AthenaData:
         self.slices={}
         self.spectra={}
         return
-    
+
+    @property
+    def n(self):
+        return self.num
+
     # TODO(@mhguo): write a correct function to load data
     def load(self,filename,config=True,**kwargs):
         self.filename=filename
@@ -649,11 +653,28 @@ class AthenaData:
     #def set_radial(self,varl=['dens','temp','velr','mflxr'],bins=256,scales='log',weights='vol',**kwargs):
     #    self.profs.update(self.get_radial(varl,bins=bins,scales=scales,weights=weights,**kwargs))
 
-    def get_slice_faces(self,zoom=0,level=0,xyz=[],axis='z'):
-        if (not xyz):
+    def xyz(self,zoom=0,level=None,axis=None):
+        level = zoom if (level is None) else level
+        if (axis=='x'):
+            xyz = [self.x1min/2**level/self.Nx1,self.x1max/2**level/self.Nx1,
+                    self.x2min/2**zoom,self.x2max/2**zoom,
+                    self.x3min/2**zoom,self.x3max/2**zoom]
+        elif (axis=='y'):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
-                   self.x2min/2**zoom,self.x2max/2**zoom,
-                   self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
+                    self.x2min/2**level/self.Nx2,self.x2max/2**level/self.Nx2,
+                    self.x3min/2**zoom,self.x3max/2**zoom]
+        elif (axis=='z'):
+            xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
+                    self.x2min/2**zoom,self.x2max/2**zoom,
+                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
+        else:
+            xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
+                    self.x2min/2**zoom,self.x2max/2**zoom,
+                    self.x3min/2**zoom,self.x3max/2**zoom]
+        return xyz
+
+    def get_slice_faces(self,zoom=0,level=0,xyz=[],axis='z'):
+        xyz = self.xyz(zoom=zoom,level=level,axis=axis) if (not xyz) else xyz
         x,y,z=self.cell_faces(level=level,xyz=xyz)
         if (axis=='z'): return asnumpy({'x':x,'y':y})
         elif (axis=='y'): return asnumpy({'x':x,'z':z})
@@ -664,20 +685,14 @@ class AthenaData:
         return asnumpy({v:(edge[:-1]+edge[1:])/2 for v,edge in dic.items()})
 
     def get_slice_coord(self,zoom=0,level=0,xyz=[],axis='z'):
-        if (not xyz):
-            xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
-                   self.x2min/2**zoom,self.x2max/2**zoom,
-                   self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
+        xyz = self.xyz(zoom=zoom,level=level,axis=axis) if (not xyz) else xyz
         x,y,z=self.coord_uniform(level=level,xyz=xyz)
         axis = self.axis_index(axis)
         return asnumpy({'x':xp.average(x,axis=axis),'y':xp.average(y,axis=axis),'z':xp.average(z,axis=axis)})
 
     # TODO(@mhguo): we should have the ability to get slice at any position with any direction
     def slice(self,var='dens',zoom=0,level=0,xyz=[],axis='z'):
-        if (not xyz):
-            xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
-                   self.x2min/2**zoom,self.x2max/2**zoom,
-                   self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
+        xyz = self.xyz(zoom=zoom,level=level,axis=axis) if (not xyz) else xyz
         axis = self.axis_index(axis)
         return asnumpy({var:xp.average(self.data_uniform(var,level=level,xyz=xyz),axis=axis)})
     
@@ -798,12 +813,12 @@ class AthenaData:
     # plot is only for plot, accept the data array
     def plot_image(self,x,y,img,title='',label='',xlabel='X',ylabel='Y',xscale='linear',yscale='linear',\
                    cmap='viridis',norm='log',save=False,figfolder=None,figlabel='',figname='',\
-                   dpi=200,fig=None,ax=None,colorbar=True,returnall=False,aspect='auto',shading='nearest',**kwargs):
+                   dpi=200,fig=None,ax=None,colorbar=True,returnall=False,aspect='auto',**kwargs):
         fig = plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         img = asnumpy(img[:,:])
         #print(x,y,img)
-        im=ax.pcolormesh(x,y,img,norm=norm,cmap=cmap,shading=shading,**kwargs)
+        im=ax.pcolormesh(x,y,img,norm=norm,cmap=cmap,**kwargs)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_xscale(xscale)
@@ -935,10 +950,10 @@ class AthenaData:
                 x,y,c,u,v = y,z,c,u,v"""
         return x,y,c,u,v
 
-    def plot_slice(self,key=None,var='dens',vec=None,stream=None,vecx='velx',vecy='vely',
+    def plot_slice(self,var='dens',key=None,vec=None,stream=None,vecx='velx',vecy='vely',
                    zoom=0,level=0,xyz=[],unit=1.0,xyunit=1.0,axis='z',
                    fig=None,ax=None,dpi=200,norm='log',cmap='viridis',aspect='equal',
-                   xlabel=None,ylabel=None,title='',label='',colorbar=True,shading='nearest',
+                   xlabel=None,ylabel=None,title='',label='',colorbar=True,
                    quiver_para=dict(),stream_para={},
                    returnall=False,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
@@ -954,7 +969,7 @@ class AthenaData:
             strm = ax.streamplot(x,y,u,v,**strm_para)
         #im=ax.pcolormesh(x,y,c,norm=norm,cmap=cmap,shading=shading,**kwargs)
         fig,im = self.plot_image(x,y,c,fig=fig,ax=ax,dpi=dpi,norm=norm,cmap=cmap,aspect=aspect,
-                                 xlabel=xlabel,ylabel=ylabel,title=title,label=label,shading=shading,
+                                 xlabel=xlabel,ylabel=ylabel,title=title,label=label,
                                  colorbar=colorbar,returnall=True,**kwargs)
         if (colorbar):
             from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -968,7 +983,6 @@ class AthenaData:
 class AthenaDataSet:
     def __init__(self,version='1.0'):
         self.version=version
-        self.ns=[]
         self.ads={}
         #self._config_func()
         return
@@ -989,8 +1003,11 @@ class AthenaDataSet:
             if n not in self.ads.keys():
                 self.ads[n]=AthenaData(num=n,version=self.version)
             self.ads[n].load(path+f".{n:05d}."+dtype,**kwargs)
-            self.ns=sorted(list(set(self.ads.keys())))
         return
-    
+
+    @property
+    def ns(self):
+        return sorted(list(set(self.ads.keys())))
+
     def __call__(self, n):
         return self.ads[n]

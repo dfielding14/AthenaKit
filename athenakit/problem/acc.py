@@ -57,7 +57,7 @@ class InitialCondition:
     def NFWMass(self,r,ms,rs):
         return ms*(np.log(1+r/rs)-r/(rs+r))
     def NFWDens(self,r,ms,rs):
-        return ms/(4*np.pi*rs**3)/(r/rs*(1+r/rs)**2)
+        return ms/(4*np.pi*rs**2*r*(1+r/rs)**2)
     def StellarMass(self,r):
         return self.NFWMass(r,self.m_star,self.r_star)
     def StellarDens(self,r):
@@ -184,6 +184,7 @@ def add_tools(ad):
 
 def add_tran(ad):
     where=ad.data('temp')<ad.header('problem','t_cold',float)
+    amx, amy, amz = 0.0, 0.0, 1.0
     if (where.any()):
         amx=ad.average('amx',where=where,weights='mass')
         amy=ad.average('amy',where=where,weights='mass')
@@ -244,8 +245,9 @@ def add_data(ad,add_bcc=True):
     ad.add_data_func('tran_stress_Rphi_maxwell/R', lambda sf : sf.data('tran_stress_Rphi_maxwell')/sf.data('tran_R'))
     ad.add_data_func('tran_stress_Rphi/R', lambda sf : sf.data('tran_stress_Rphi')/sf.data('tran_R'))
 
-    ad.add_data_func('t_initial', lambda sf : xp.interp(sf.data('r'),xp.asarray(sf.rad_initial['r']),xp.asarray(sf.rad_initial['temp'])))
-    ad.add_data_func('t_hot', lambda sf : sf.header('problem','tf_hot',float)*sf.data('t_initial'))
+    ad.add_data_func('dens_initial', lambda sf : xp.interp(sf.data('r'),xp.asarray(sf.rad_initial['r']),xp.asarray(sf.rad_initial['dens'])))
+    ad.add_data_func('temp_initial', lambda sf : xp.interp(sf.data('r'),xp.asarray(sf.rad_initial['r']),xp.asarray(sf.rad_initial['temp'])))
+    ad.add_data_func('t_hot', lambda sf : sf.header('problem','tf_hot',float)*sf.data('temp_initial'))
 
     for var in ['mdot','mdotin','mdotout','momdot','momdotin','momdotout','ekdot','ekdotin','ekdotout']:
         ad.add_data_func(var, lambda sf, var=var : 4.0*xp.pi*sf.data('r')**2*sf.data(var.replace('dot','flxr')))
