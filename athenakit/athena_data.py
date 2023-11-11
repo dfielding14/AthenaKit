@@ -528,7 +528,7 @@ class AthenaData:
         range_0 = range
         for varl,scale in zip(varll,scales):
             arr = [self.data(v)[where].ravel() for v in varl]
-            histname = '_'.join(varl)
+            histname = '-'.join(varl)
             # get bins
             bins = [bins_0]*len(varl)
             scale = [scale]*len(varl) if (type(scale) is str) else scale
@@ -636,7 +636,7 @@ class AthenaData:
             self.profs[key] = {}
         self.profs[key].update(self.get_profile(bin_var,varl,bins=bins,weights=weights,**kwargs))
     def set_profile2d(self,bin_varl,varl,key=None,bins=256,weights='vol',**kwargs):
-        key = '_'.join(bin_varl) if key is None else key
+        key = '-'.join(bin_varl) if key is None else key
         if key not in self.profs.keys():
             self.profs[key] = {}
         self.profs[key].update(self.get_profile2d(bin_varl,varl,bins=bins,weights=weights,**kwargs))
@@ -845,7 +845,7 @@ class AthenaData:
         ax.streamplot(x*xyunit, y*xyunit, u, v, color=color,linewidth=linewidth,arrowsize=arrowsize)
         return fig
 
-    def plot_phase(self,varname='dens_temp',key='vol',bins=128,weights='vol',title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
+    def plot_phase(self,varname='dens-temp',key='vol',bins=128,weights='vol',title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
                    unit=1.0,cmap='viridis',norm='log',extent=None,density=False,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
                    figpath='',x=None,y=None,xshift=0.0,xunit=1.0,yshift=0.0,yunit=1.0,fig=None,ax=None,dpi=128,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
@@ -854,7 +854,7 @@ class AthenaData:
         try:
             dat = self.hists[key][varname]
         except:
-            dat = self.get_hist2d([varname.split('_')],bins=bins,scales=[[xscale,yscale]],weights=weights)[varname]
+            dat = self.get_hist2d([varname.split('-')],bins=bins,scales=[[xscale,yscale]],weights=weights)[varname]
         x,y = dat['edges'].values()
         im_arr = asnumpy(dat['dat'])
         extent = [x.min(),x.max(),y.min(),y.max()] if extent is None else extent
@@ -921,7 +921,7 @@ class AthenaData:
         return fig
 
     # get snapshot data
-    def get_slice_for_plot(self,key=None,var='dens',vec=None,stream=None,vecx='velx',vecy='vely',zoom=0,level=0,xyz=[],unit=1.0,xyunit=1.0,axis='z'):
+    def get_slice_for_plot(self,var='dens',key=None,vec=None,stream=None,vecx='velx',vecy='vely',zoom=0,level=0,xyz=[],unit=1.0,xyunit=1.0,axis='z'):
         if key is None:
             slice=self.get_slice(varl=[var,vecx,vecy],zoom=zoom,level=level,xyz=xyz,axis=axis)
         else:
@@ -958,7 +958,7 @@ class AthenaData:
                    returnall=False,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
-        x,y,c,u,v = self.get_slice_for_plot(key=key,var=var,vec=vec,stream=stream,vecx=vecx,vecy=vecy,
+        x,y,c,u,v = self.get_slice_for_plot(var=var,key=key,vec=vec,stream=stream,vecx=vecx,vecy=vecy,
                                             zoom=zoom,level=level,xyz=xyz,unit=unit,xyunit=xyunit,axis=axis)
         quiver,strm = None,None
         if (vec is not None):
@@ -989,8 +989,8 @@ class AthenaDataSet:
 
     """
     def _config_func(self):
-        #ad_methods = [method_name for method_name in dir(AthenaData) if callable(getattr(AthenaData, method_name)) and method_name[0]!='_']
-        ad_methods = [method_name for method_name in dir(AthenaData) if method_name[0]!='_']
+        #ad_methods = [method_name for method_name in dir(AthenaData) if callable(getattr(AthenaData, method_name)) and method_name[0]!='-']
+        ad_methods = [method_name for method_name in dir(AthenaData) if method_name[0]!='-']
         for method_name in ad_methods:
             self.__dict__[method_name] = lambda *args, **kwargs: [getattr(self.alist[i], method_name)(*args, **kwargs) for i in self.ilist]
             #self.__dict__[method_name] = lambda *args, **kwargs: [self.alist[i].__dict__[method_name](*args, **kwargs) for i in self.ilist]
