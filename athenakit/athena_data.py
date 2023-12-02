@@ -280,9 +280,10 @@ class AthenaData:
         self.data_func['brot'] = lambda self : xp.sqrt(self.data('btot^2')-self.data('bccr')**2)
         self.data_func['v_A^2'] = lambda self : self.data('btot^2')/self.data('dens')
         self.data_func['v_A'] = lambda self : xp.sqrt(self.data('v_A^2'))
-        self.data_func['beta'] = lambda self : self.data('pres')/self.data('btot^2')
         self.data_func['pmag'] = lambda self : 0.5*self.data('btot^2')
         self.data_func['emag'] = lambda self : 0.5*self.data('btot^2')
+        self.data_func['beta'] = lambda self : self.data('pgas')/self.data('pmag')
+        self.data_func['1/beta'] = lambda self : self.data('pmag')/self.data('pgas')
         self.data_func['ptot'] = lambda self : self.data('pres')+self.data('pmag') if self.is_mhd\
                                                else self.data('pres')
         self.data_func['etot'] = lambda self : self.data('ekin')+self.data('eint')+self.data('emag') if self.is_mhd\
