@@ -1009,5 +1009,7 @@ class AthenaDataSet:
     def ns(self):
         return sorted(list(set(self.ads.keys())))
 
-    def __call__(self, n):
+    def __call__(self, n=None):
+        if (n is None):
+            n = self.ns[0]
         return self.ads[n]
