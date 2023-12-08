@@ -55,7 +55,6 @@ class AthenaData:
     def n(self):
         return self.num
 
-    # TODO(@mhguo): write a correct function to load data
     def load(self,filename,config=True,**kwargs):
         self.filename=filename
         if (filename.endswith('.bin')):
@@ -98,7 +97,6 @@ class AthenaData:
         self._load_from_binary(read_binary(filename))
         return
 
-    # TODO(@mhguo): write a correct function to load data from athena++ hdf5 data
     def load_athdf(self,filename):
         self._load_from_athdf(filename)
         return
@@ -544,6 +542,7 @@ class AthenaData:
         hists = asnumpy(hists)
         return hists
 
+    # TODO(@mhguo): add a parameter data_func=self.data
     def _profiles(self,bin_varl,varl,bins=10,range=None,weights=None,scales='linear',where=None,**kwargs):
         """
         Compute the profile of a (list of) variable with respect to one or more bin variables.
@@ -814,7 +813,8 @@ class AthenaData:
     # plot is only for plot, accept the data array
     def plot_image(self,x,y,img,title='',label='',xlabel='X',ylabel='Y',xscale='linear',yscale='linear',\
                    cmap='viridis',norm='log',save=False,figfolder=None,figlabel='',figname='',\
-                   dpi=200,fig=None,ax=None,colorbar=True,returnall=False,aspect='auto',**kwargs):
+                   dpi=200,fig=None,ax=None,colorbar=True,returnall=False,aspect='auto',\
+                   xticks=None,yticks=None,xticklabels=None,yticklabels=None, **kwargs):
         fig = plt.figure(dpi=dpi) if fig is None else fig
         ax = plt.axes() if ax is None else ax
         img = asnumpy(img[:,:])
@@ -825,6 +825,10 @@ class AthenaData:
         ax.set_xscale(xscale)
         ax.set_yscale(yscale)
         ax.set_aspect(aspect)
+        if (xticks is not None): ax.set_xticks(xticks)
+        if (yticks is not None): ax.set_yticks(yticks)
+        if (xticklabels is not None): ax.set_xticklabels(xticklabels)
+        if (yticklabels is not None): ax.set_yticklabels(yticklabels)
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
         if (colorbar):
             from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -933,22 +937,6 @@ class AthenaData:
         u,v = None,None
         if (vec is not None or stream is not None):
             u,v = slice[vecx],slice[vecy]
-        """else:
-            if (not xyz):
-                xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
-                    self.x2min/2**zoom,self.x2max/2**zoom,
-                    self.x3min/2**level/self.Nx3,self.x3max/2**level/self.Nx3]
-            x,y,z=self.get_slice_coord(zoom=zoom,level=level,xyz=xyz,axis=axis).values()
-            x,y,z=x*xyunit,y*xyunit,z*xyunit
-            c = self.get_slice(var,zoom=zoom,level=level,xyz=xyz,axis=axis)[var]*unit
-            u,v = None,None
-            if (vec is not None or stream is not None):
-                u = self.get_slice(vecx,zoom=zoom,level=level,xyz=xyz,axis=axis)[vecx]
-                v = self.get_slice(vecy,zoom=zoom,level=level,xyz=xyz,axis=axis)[vecy]
-            if(axis==1): 
-                x,y,c,u,v = z.T,x.T,c.T,u.T,v.T
-            if(axis==2): 
-                x,y,c,u,v = y,z,c,u,v"""
         return x,y,c,u,v
 
     def plot_slice(self,var='dens',key=None,vec=None,stream=None,vecx='velx',vecy='vely',
