@@ -220,6 +220,10 @@ class AthenaData:
         return
 
     ### data handling ###
+    def add_data(self,name,data):
+        self.data_raw[name]=data
+        return
+
     def add_data_func(self,name,func):
         self.data_func[name]=func
         return
@@ -229,6 +233,9 @@ class AthenaData:
         self.data_func['ones'] = lambda self : xp.ones(self.data('dens').shape)
         self.data_func['vol'] = lambda self : self.data('dx')*self.data('dy')*self.data('dz')
         self.data_func['r'] = lambda self : xp.sqrt(self.data('x')**2+self.data('y')**2+self.data('z')**2)
+        self.data_func['R'] = lambda self : xp.sqrt(self.data('x')**2+self.data('y')**2)
+        self.data_func['theta'] = lambda self : xp.arccos(self.data('z')/self.data('r'))
+        self.data_func['phi'] = lambda self : xp.arctan2(self.data('y'),self.data('x'))
         self.data_func['mass'] = lambda self : self.data('vol')*self.data('dens')
         self.data_func['pres'] = lambda self : (self.gamma-1)*self.data('eint')
         self.data_func['pgas'] = lambda self : self.data('pres')
@@ -242,6 +249,8 @@ class AthenaData:
         self.data_func['velr'] = lambda self : (self.data('velx')*self.data('x')+\
                                                self.data('vely')*self.data('y')+\
                                                self.data('velz')*self.data('z'))/self.data('r')
+        self.data_func['vtheta'] = lambda self : (self.data('z')*self.data('velr')-self.data('r')*self.data('velz'))/self.data('R')
+        self.data_func['vphi'] = lambda self : (self.data('x')*self.data('vely')-self.data('y')*self.data('velx'))/self.data('r')
         self.data_func['momr'] = lambda self : self.data('velr')*self.data('dens')
         self.data_func['velin'] = lambda self : xp.minimum(self.data('velr'),0.0)
         self.data_func['velout'] = lambda self : xp.maximum(self.data('velr'),0.0)
@@ -261,6 +270,9 @@ class AthenaData:
         self.data_func['momflxr'] = lambda self : self.data('dens')*self.data('velr')**2
         self.data_func['momflxrin'] = lambda self : self.data('dens')*self.data('velr')*self.data('velin')
         self.data_func['momflxrout'] = lambda self : self.data('dens')*self.data('velr')*self.data('velout')
+        self.data_func['eiflxr'] = lambda self : self.data('eint')*self.data('velr')
+        self.data_func['eiflxrin'] = lambda self : self.data('eint')*self.data('velin')
+        self.data_func['eiflxrout'] = lambda self : self.data('eint')*self.data('velout')
         self.data_func['ekflxr'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velr')
         self.data_func['ekflxrin'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velin')
         self.data_func['ekflxrout'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velout')
@@ -273,6 +285,8 @@ class AthenaData:
         self.data_func['bccr'] = lambda self : (self.data('bccx')*self.data('x')+\
                                                 self.data('bccy')*self.data('y')+\
                                                 self.data('bccz')*self.data('z'))/self.data('r')
+        self.data_func['btheta'] = lambda self : (self.data('z')*self.data('bccr')-self.data('r')*self.data('bccz'))/self.data('R')
+        self.data_func['bphi'] = lambda self : (self.data('x')*self.data('bccy')-self.data('y')*self.data('bccx'))/self.data('r')
         self.data_func['btot^2'] = lambda self : self.data('bccx')**2+self.data('bccy')**2+self.data('bccz')**2
         self.data_func['btot'] = lambda self : xp.sqrt(self.data('btot^2'))
         self.data_func['brot'] = lambda self : xp.sqrt(self.data('btot^2')-self.data('bccr')**2)

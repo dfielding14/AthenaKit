@@ -30,6 +30,20 @@ def zeros_like(obj):
         return [zeros_like(a) for a in obj]
     return np.zeros_like(obj)
 
+def plus(a,b):
+    if (type(a) is dict):
+        return {k:plus(a[k],b[k]) for k in a.keys()}
+    if (type(a) is list):
+        return [plus(a[i],b[i]) for i in range(len(a))]
+    return a+b
+
+def times(a,b):
+    if (type(a) is dict):
+        return {k:times(a[k],b) for k in a.keys()}
+    if (type(a) is list):
+        return [times(a[i],b) for i in range(len(a))]
+    return a*b
+
 # Convert all binary files in binary path to athdf files in athdf path
 def bin_to_athdf(binary_fname,athdf_fname):
     xdmf_fname = athdf_fname + ".xdmf"
@@ -186,6 +200,13 @@ def rho_T_t_cool(cooling_rho=np.logspace(-4,4,400),cooling_temp=np.logspace(0,8,
     cooling_rho,cooling_temp=np.meshgrid(cooling_rho,cooling_temp)
     cooling_tcool=k_boltzmann_cgs*cooling_temp/cooling_rho/CoolFnShure(cooling_temp)/(gamma-1)/myr_cgs
     return cooling_rho,cooling_temp,cooling_tcool
+
+##########################################################################################
+## Some useful functions
+##########################################################################################
+def smooth(x,s=3,mode='nearest',**kwargs):
+    from scipy.ndimage import gaussian_filter
+    return gaussian_filter(x,s,mode=mode,**kwargs)
 
 ##########################################################################################
 ## Scipy Measurements Label with boundary correction

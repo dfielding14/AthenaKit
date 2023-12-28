@@ -247,9 +247,10 @@ def add_data(ad,add_bcc=True):
 
     ad.add_data_func('dens_initial', lambda sf : xp.interp(sf.data('r'),xp.asarray(sf.rad_initial['r']),xp.asarray(sf.rad_initial['dens'])))
     ad.add_data_func('temp_initial', lambda sf : xp.interp(sf.data('r'),xp.asarray(sf.rad_initial['r']),xp.asarray(sf.rad_initial['temp'])))
+    ad.add_data_func('vel_kep', lambda sf : xp.interp(sf.data('r'),xp.asarray(sf.rad_initial['r']),xp.asarray(sf.rad_initial['v_kep'])))
     ad.add_data_func('t_hot', lambda sf : sf.header('problem','tf_hot',float)*sf.data('temp_initial'))
 
-    for var in ['mdot','mdotin','mdotout','momdot','momdotin','momdotout','ekdot','ekdotin','ekdotout']:
+    for var in ['mdot','mdotin','mdotout','momdot','momdotin','momdotout','eidot','eidotin','eidotout','ekdot','ekdotin','ekdotout']:
         ad.add_data_func(var, lambda sf, var=var : 4.0*xp.pi*sf.data('r')**2*sf.data(var.replace('dot','flxr')))
         ad.add_data_func(var+'_cold', lambda sf, var=var : sf.data(var)*(sf.data('temp')<sf.header('problem','t_cold',float)))
         ad.add_data_func(var+'_warm', lambda sf, var=var : sf.data(var)*(sf.data('temp')>=sf.header('problem','t_cold',float))*(sf.data('temp')<sf.data('t_hot')))
