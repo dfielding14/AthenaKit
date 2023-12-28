@@ -201,6 +201,7 @@ class AthenaData:
         self.is_mhd = 'mhd' in self._header.keys()
         self.use_e=self.header('mhd','use_e',bool,True) if self.is_mhd else self.header('hydro','use_e',bool,True) 
         self.gamma=self.header('mhd','gamma',float,5/3) if self.is_mhd else self.header('hydro','gamma',float,5/3)
+        self.iso_cs=self.header('mhd','iso_cs',float,0.0) if self.is_mhd else self.header('hydro','iso_cs',float,0.0)
         
         return
     
