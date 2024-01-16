@@ -244,17 +244,19 @@ class AthenaData:
         self.data_func['entropy'] = lambda self : self.data('pres')/self.data('dens')**self.gamma
         self.data_func['c_s^2'] = lambda self : self.gamma*self.data('pres')/self.data('dens')
         self.data_func['c_s'] = lambda self : xp.sqrt(self.data('c_s^2'))
-        self.data_func['momx'] = lambda self : self.data('velx')*self.data('dens')
-        self.data_func['momy'] = lambda self : self.data('vely')*self.data('dens')
-        self.data_func['momz'] = lambda self : self.data('velz')*self.data('dens')
+        self.data_func['momx'] = lambda self : self.data('dens')*self.data('velx')
+        self.data_func['momy'] = lambda self : self.data('dens')*self.data('vely')
+        self.data_func['momz'] = lambda self : self.data('dens')*self.data('velz')
         self.data_func['velr'] = lambda self : (self.data('velx')*self.data('x')+\
                                                self.data('vely')*self.data('y')+\
                                                self.data('velz')*self.data('z'))/self.data('r')
         self.data_func['vtheta'] = lambda self : (self.data('z')*self.data('velr')-self.data('r')*self.data('velz'))/self.data('R')
         self.data_func['vphi'] = lambda self : (self.data('x')*self.data('vely')-self.data('y')*self.data('velx'))/self.data('r')
-        self.data_func['momr'] = lambda self : self.data('velr')*self.data('dens')
-        self.data_func['velin'] = lambda self : xp.minimum(self.data('velr'),0.0)
-        self.data_func['velout'] = lambda self : xp.maximum(self.data('velr'),0.0)
+        self.data_func['momr'] = lambda self : self.data('dens')*self.data('velr')
+        self.data_func['velrin'] = lambda self : xp.minimum(self.data('velr'),0.0)
+        self.data_func['velrout'] = lambda self : xp.maximum(self.data('velr'),0.0)
+        self.data_func['velin'] = lambda self : self.data('velrin')
+        self.data_func['velout'] = lambda self : self.data('velrout')
         self.data_func['vtot^2'] = lambda self : self.data('velx')**2+self.data('vely')**2+self.data('velz')**2
         self.data_func['vtot'] = lambda self : xp.sqrt(self.data('vtot^2'))
         self.data_func['vrot'] = lambda self : xp.sqrt(self.data('vtot^2')-self.data('velr')**2)
@@ -363,11 +365,11 @@ class AthenaData:
         nx2_fac = 2**level*self.Nx2/(self.x2max-self.x2min)
         nx3_fac = 2**level*self.Nx3/(self.x3max-self.x3min)
         i_min = int((xyz[0]-self.x1min)*nx1_fac)
-        i_max = int((xyz[1]-self.x1min)*nx1_fac)
+        i_max = int(np.ceil((xyz[1]-self.x1min)*nx1_fac))
         j_min = int((xyz[2]-self.x2min)*nx2_fac)
-        j_max = int((xyz[3]-self.x2min)*nx2_fac)
+        j_max = int(np.ceil((xyz[3]-self.x2min)*nx2_fac))
         k_min = int((xyz[4]-self.x3min)*nx3_fac)
-        k_max = int((xyz[5]-self.x3min)*nx3_fac)
+        k_max = int(np.ceil((xyz[5]-self.x3min)*nx3_fac))
         data = xp.zeros((k_max-k_min, j_max-j_min, i_max-i_min))
         raw = self.data(var)
         for nmb in range(self.n_mbs):
@@ -403,6 +405,20 @@ class AthenaData:
                 ku_d = min(ku_d, k_max) - k_min
                 if s > 1:
                     # TODO(@mhguo): this seems to be the bottleneck of performance
+                    # Only prolongate selected data
+                    kl_r = kl_s // s
+                    ku_r = min(ku_s // s + 1, self.nx3)
+                    jl_r = jl_s // s
+                    ju_r = min(ju_s // s + 1, self.nx2)
+                    il_r = il_s // s
+                    iu_r = min(iu_s // s + 1, self.nx1)
+                    kl_s = kl_s - kl_r * s
+                    ku_s = ku_s - kl_r * s
+                    jl_s = jl_s - jl_r * s
+                    ju_s = ju_s - jl_r * s
+                    il_s = il_s - il_r * s
+                    iu_s = iu_s - il_r * s
+                    block_data = block_data[kl_r:ku_r,jl_r:ju_r,il_r:iu_r]
                     if self.Nx1 > 1:
                         block_data = xp.repeat(block_data, s, axis=2)
                     if self.Nx2 > 1:
@@ -558,7 +574,7 @@ class AthenaData:
         return hists
 
     # TODO(@mhguo): add a parameter data_func=self.data
-    def _profiles(self,bin_varl,varl,bins=10,range=None,weights=None,scales='linear',where=None,**kwargs):
+    def _profiles(self,bin_varl,varl,bins=10,range=None,weights=None,scales='linear',where=None,data=None,**kwargs):
         """
         Compute the profile of a (list of) variable with respect to one or more bin variables.
 
@@ -575,6 +591,8 @@ class AthenaData:
         profs : dict
             dictionary of profiles
         """
+        if (data is None):
+            data = lambda sf,var : sf.data(var)
         if (type(bin_varl) is str):
             bin_varl = [bin_varl]
         if (type(varl) is str):
@@ -584,12 +602,12 @@ class AthenaData:
         if (range is None):
             range = [None]*len(bin_varl)
         if (type(weights) is str):
-            weights = self.data(weights)[where].ravel()
+            weights = data(self,weights)[where].ravel()
         if (type(scales) is str):
             scales = [scales]*len(bin_varl)
         for i,v in enumerate(bin_varl):
             bins[i] = self._set_bins(v,bins[i],range[i],scales[i],where)
-        bin_arr = [self.data(v)[where].ravel() for v in bin_varl]
+        bin_arr = [data(self,v)[where].ravel() for v in bin_varl]
         norm = xp.histogramdd(bin_arr,bins=bins,weights=weights,**kwargs)
         profs = {'edges':{v:_ for v,_ in zip(bin_varl,norm[1])},'norm':norm[0]}
         profs['centers'] = {v:(edge[:-1]+edge[1:])/2 for v,edge in profs['edges'].items()}
@@ -597,9 +615,9 @@ class AthenaData:
             profs[var] = profs['centers'][var]
         for var in varl:
             if (weights is None):
-                data_weights = self.data(var)[where].ravel()
+                data_weights = data(self,var)[where].ravel()
             else:
-                data_weights = self.data(var)[where].ravel()*weights
+                data_weights = data(self,var)[where].ravel()*weights
             profs[var] = xp.histogramdd(bin_arr,bins=bins,weights=data_weights,**kwargs)[0]/norm[0]
         profs = asnumpy(profs)
         return profs

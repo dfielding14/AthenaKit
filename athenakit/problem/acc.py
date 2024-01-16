@@ -201,10 +201,9 @@ def add_tran(ad):
     return
 
 def add_data(ad,add_bcc=True):
-    if ('bcc1' not in ad.data_raw.keys()) and add_bcc:
-        ad.add_data_func('bcc1', lambda sf : sf.data('zeros'))
-        ad.add_data_func('bcc2', lambda sf : sf.data('zeros'))
-        ad.add_data_func('bcc3', lambda sf : sf.data('zeros'))
+    for var in ['bcc1','bcc2','bcc3']:
+        if ((var not in ad.data_raw.keys()) and add_bcc):
+                ad.add_data_func(var, lambda sf : sf.data('zeros'))
     
     ad.add_data_func('tran_x', lambda sf : sf.tran[0,0]*sf.data('x')+sf.tran[0,1]*sf.data('y')+sf.tran[0,2]*sf.data('z'))
     ad.add_data_func('tran_y', lambda sf : sf.tran[1,0]*sf.data('x')+sf.tran[1,1]*sf.data('y')+sf.tran[1,2]*sf.data('z'))
@@ -250,10 +249,20 @@ def add_data(ad,add_bcc=True):
     ad.add_data_func('vel_kep', lambda sf : xp.interp(sf.data('r'),xp.asarray(sf.rad_initial['r']),xp.asarray(sf.rad_initial['v_kep'])))
     ad.add_data_func('t_hot', lambda sf : sf.header('problem','tf_hot',float)*sf.data('temp_initial'))
 
+    '''
     for var in ['mdot','mdotin','mdotout','momdot','momdotin','momdotout','eidot','eidotin','eidotout','ekdot','ekdotin','ekdotout']:
         ad.add_data_func(var, lambda sf, var=var : 4.0*xp.pi*sf.data('r')**2*sf.data(var.replace('dot','flxr')))
         ad.add_data_func(var+'_cold', lambda sf, var=var : sf.data(var)*(sf.data('temp')<sf.header('problem','t_cold',float)))
         ad.add_data_func(var+'_warm', lambda sf, var=var : sf.data(var)*(sf.data('temp')>=sf.header('problem','t_cold',float))*(sf.data('temp')<sf.data('t_hot')))
         ad.add_data_func(var+'_hot', lambda sf, var=var : sf.data(var)*(sf.data('temp')>=sf.data('t_hot')))
+    '''
+    for key,inte in zip(['mdot','momdot','eidot','ekdot','edot'],
+                        ['dens','momr',  'eint', 'ekin', 'etot']):
+        for direc in ['','in','out']:
+            var = key+direc
+            ad.add_data_func(var, lambda sf, inte=inte, direc=direc : 4.0*xp.pi*sf.data('r')**2*sf.data(inte)*sf.data('velr'+direc))
+            ad.add_data_func(var+'_cold', lambda sf, var=var : sf.data(var)*(sf.data('temp')<sf.header('problem','t_cold',float)))
+            ad.add_data_func(var+'_warm', lambda sf, var=var : sf.data(var)*(sf.data('temp')>=sf.header('problem','t_cold',float))*(sf.data('temp')<sf.data('t_hot')))
+            ad.add_data_func(var+'_hot', lambda sf, var=var : sf.data(var)*(sf.data('temp')>=sf.data('t_hot')))
 
     return

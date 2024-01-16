@@ -17,13 +17,15 @@ def add_tools(ad):
     return
 
 def add_data(ad,is_gr=False,add_bcc=True):
-    if ('bcc1' not in ad.data_raw.keys()) and add_bcc:
-        ad.add_data_func('bcc1', lambda sf : sf.data('zeros'))
-        ad.add_data_func('bcc2', lambda sf : sf.data('zeros'))
-        ad.add_data_func('bcc3', lambda sf : sf.data('zeros'))
+    for var in ['bcc1','bcc2','bcc3']:
+        if ((var not in ad.data_raw.keys()) and add_bcc):
+                ad.add_data_func(var, lambda sf : sf.data('zeros'))
 
-    for var in ['mdot','mdotin','mdotout','momdot','momdotin','momdotout','ekdot','ekdotin','ekdotout']:
-        ad.add_data_func(var, lambda sf, var=var : 4.0*xp.pi*sf.data('r')**2*sf.data(var.replace('dot','flxr')))
+    for key,inte in zip(['mdot','momdot','eidot','ekdot','edot'],
+                        ['dens','momr',  'eint', 'ekin', 'etot']):
+        for direc in ['','in','out']:
+            var = key+direc
+            ad.add_data_func(var, lambda sf, inte=inte, direc=direc : 4.0*xp.pi*sf.data('r')**2*sf.data(inte)*sf.data('velr'+direc))
 
     if (is_gr): add_gr_data(ad)
 
