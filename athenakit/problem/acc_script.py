@@ -2,7 +2,7 @@
 Script for running analysis of athena++ simulation
 
 Example:
-    python -u script.py -p ../simulation -t wpv
+    python -u script.py -p ../simulation -t wpv -v simu.hydro_w
 '''
 
 import os
@@ -22,6 +22,8 @@ sys.path.append('/u/mguo/Git')
 import athenaresearch.athenakit as ak
 from athenaresearch.athenakit.problem import acc
 plt.style.use('~/Git/pykit/pykit/mplstyle/mg')
+
+# TODO(@mhguo): seperate work and plot onto gpu and cpu respectively!
 
 def adwork(ad,zlist=None,bins=256):
     acc.add_tools(ad)
@@ -61,14 +63,15 @@ def adwork(ad,zlist=None,bins=256):
         varl=['dens','temp','velx','velz','bccx','bccz','pres','vtot',]
         ad.set_slice(varl=varl,key=f'y_{j}',level=level,axis='y',
                      xyz=[ad.x1min/2**zoom,ad.x1max/2**zoom,
-                          ad.x2min/2**zoom/ad.Nx2,ad.x2max/2**zoom/ad.Nx2,
+                          ad.x2min/2**level/ad.Nx2,ad.x2max/2**level/ad.Nx2,
                           ad.x3min/2**zoom,ad.x3max/2**zoom])
         varl=['dens',]
-        ad.set_profile2d(['x','y'],varl,key=f'x-y_{j}',weights='vol',bins=128,where=xp.abs(ad.data('z'))<ad.x3max/2**zoom,
+        data_func = lambda ad,var: ad.data_uniform(var,level,ad.xyz(zoom,level))
+        ad.set_profile2d(['x','y'],varl,key=f'x-y_{j}',weights=None,bins=128,data=data_func,
                  range=[[ad.x1min/2**zoom,ad.x1max/2**zoom],[ad.x2min/2**zoom,ad.x2max/2**zoom]])
-        ad.set_profile2d(['y','z'],varl,key=f'y-z_{j}',weights='vol',bins=128,where=xp.abs(ad.data('x'))<ad.x1max/2**zoom,
+        ad.set_profile2d(['y','z'],varl,key=f'y-z_{j}',weights=None,bins=128,data=data_func,
                  range=[[ad.x2min/2**zoom,ad.x2max/2**zoom],[ad.x3min/2**zoom,ad.x3max/2**zoom]])
-        ad.set_profile2d(['x','z'],varl,key=f'x-z_{j}',weights='vol',bins=128,where=xp.abs(ad.data('y'))<ad.x2max/2**zoom,
+        ad.set_profile2d(['x','z'],varl,key=f'x-z_{j}',weights=None,bins=128,data=data_func,
                  range=[[ad.x1min/2**zoom,ad.x1max/2**zoom],[ad.x3min/2**zoom,ad.x3max/2**zoom]])
     
     print('phase '+str(ad.num))
@@ -87,7 +90,8 @@ def adwork(ad,zlist=None,bins=256):
     ad.set_hist2d(varl,weights='mass',bins=bins,scales='log')
 
     print('radial '+str(ad.num))
-    varl=['mdot','mdotin','mdotout','momdot','momdotin','momdotout','ekdot','ekdotin','ekdotout']
+    varl=['mdot','mdotin','mdotout','momdot','momdotin','momdotout','eidot','eidotin','eidotout',
+          'ekdot','ekdotin','ekdotout','edot','edotin','edotout']
     for suf in ['','_cold','_warm','_hot']:
         ad.set_profile('r',varl=[var+suf for var in varl],key='r_vol',bins=bins,scales='log',weights='vol')
 
@@ -345,7 +349,7 @@ def adplot(ad,zlist=None):
         rad_m['tcool']=1/(ad.gamma-1)*rad_m['temp']/(rad_v['dens']*ak.CoolFnShure(rad_m['temp']*Tunit)/unit.cooling_cgs/acc.n_t_h_ratio**2)
         axes[0,1].plot(r*lunit,-r/rad_v['velin']/rad['t_ff'],marker='',color=colors[cn],label=(r'$t_{\rm inflow}/t_{\rm ff}$' if (i==3) else None))
         axes[0,1].plot(r*lunit,rad_m['tcool']/rad['t_ff'],linestyle='--',marker='',color=colors[cn],label=(r'$t_{\rm cool}/t_{\rm ff}$' if (i==3) else None))
-        axes[0,2].plot(r*lunit,rad_v['eint']/rad_v['btot^2']*2,color=colors[cn],label=label)
+        axes[0,2].plot(r*lunit,rad_v['pres']/rad_v['btot^2']*2,color=colors[cn],label=label)
         axes[1,2].plot(r*lunit,rad_v['amx'],color=colors[cn],label=label)
         axes[1,2].plot(r*lunit,rad_v['amy'],color=colors[cn],label=label,alpha=0.5)
         axes[1,2].plot(r*lunit,rad_v['amz'],color=colors[cn],label=label,alpha=0.3)
@@ -405,6 +409,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default = 0)
     parser.add_argument('-v', '--variables', nargs='+', help='<Required> Set flag', default=['mhd_w_bcc','mhd_divb'])
     parser.add_argument('-z', '--zooms', nargs='+', help='<Required> Set flag', default=[])
+    parser.add_argument('-n', '--nprocess', type=int, default = 0)
     args = parser.parse_args()
     data_path=args.path+'/'+args.data+'/'
     task=args.task
@@ -436,12 +441,12 @@ if __name__ == "__main__":
     # run
     def run(i):
         for variable in variables:
-            filename=athdfpath+f'Acc.{variable}.{i:05d}.athdf'
-            binfilename=binpath+f'Acc.{variable}.{i:05d}.bin'
+            filename=athdfpath+f'{variable}.{i:05d}.athdf'
+            binfilename=binpath+f'{variable}.{i:05d}.bin'
             if os.path.isfile(binfilename):
                 if ((not os.path.isfile(filename)) \
                 or (os.path.getmtime(binfilename)>os.path.getmtime(filename))):
-                    ak.bin_to_athdf(binpath+f'Acc.{variable}.{i:05d}.bin',filename)
+                    ak.bin_to_athdf(binpath+f'{variable}.{i:05d}.bin',filename)
                     print(f'bin_to_athdf {filename}')
         ad=ak.AthenaData()
         #try:
@@ -450,7 +455,7 @@ if __name__ == "__main__":
             print(f'running i={i}')
             if ('w' in task):
                 print(f'loading athdf i={i}')
-                filename=athdfpath+f'/Acc.{variable}.{i:05d}.athdf'
+                filename=athdfpath+f'/{variable}.{i:05d}.athdf'
                 ad.load(filename)
                 print(f'working i={i}')
                 adwork(ad,zooms).save(pklpath+f'/Base.{ad.num:05d}.pkl')
@@ -464,7 +469,7 @@ if __name__ == "__main__":
                 adplot(ad,zooms)
             if ('u' in task):
                 print(f'loading athdf i={i}')
-                filename=athdfpath+f'/Acc.{variable}.{i:05d}.athdf'
+                filename=athdfpath+f'/{variable}.{i:05d}.athdf'
                 ad.load(filename)
                 print(f'loading pkl i={i}')
                 filename=pklpath+f'/Base.{i:05d}.pkl'
@@ -479,9 +484,34 @@ if __name__ == "__main__":
 
     tic=time.time()
     print("mp.cpu_count:",mp.cpu_count())
-    for i in numlist:run(i)
+    if ('w' in task or 'u' in task or 'p' in task):
+        if args.nprocess<=1:
+            for n in numlist:run(n)
+        else:
+            with mp.Pool(args.nprocess) as p:p.map(run,numlist)
+    if ('f' in task):
+        numlist=[]
+        for file in sorted(os.listdir(pklpath)):
+            if file.endswith('.pkl'):
+                num=int(file.split('.')[-2])
+                figname=figpath+f'/fig_phase_0_{num:04d}.png'
+                if (args.all or not os.path.isfile(figname) or 
+                    os.path.getmtime(figname)<os.path.getmtime(pklpath+f'/Base.{num:05d}.pkl')):
+                    numlist.append(num)
+        numlist=sorted(list(set(numlist)))
+        print('Plot for', data_path, numlist)
+        def plot(i):
+            ad=ak.AthenaData()
+            ad.load(pklpath+f'/Base.{i:05d}.pkl')
+            ad.figpath=figpath
+            print(f'plotting i={i}')
+            adplot(ad,zooms)
+        if (args.nprocess<=1):
+            for i in numlist: plot(i)
+        else:
+            with mp.Pool(args.nprocess) as p:p.map(plot,numlist)
     if ('v' in task):
-        for label in ['phase_0','radial_0','image_x','image_y','image_z',]:
+        for label in ['image_x','image_y','image_z','phase_0','radial_0',]:
             make_video(figlabel='fig_'+label,videolabel='video_'+label,figdir=figpath,videodir=videopath,duration=0.05,fps=20)
     '''
     if args.batch_size>0:
