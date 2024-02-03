@@ -7,6 +7,17 @@ from .. import units
 ##########################################################################################
 
 # analytical function
+
+class SedovTaylor():
+    def __init__(self,E,rho,gamma=5/3) -> None:
+        self.E=E
+        self.rho=rho
+        self.epsilon=1.15167
+    def r_s(self,t):
+        return self.epsilon*self.E**(1/5)*self.rho**(-1/5)*t**(2/5)
+    def v_s(self,t):
+        return 2/5*self.epsilon*self.E**(1/5)*self.rho**(-1/5)*t**(-3/5)
+
 class SNR_evo:
     # TODO(@mhguo): add units!!!
     # Note that everything is in code units
@@ -391,3 +402,64 @@ class SNR_mpe():
         print("test")
         self.solve(xs)
         self.post_solve(ts)
+
+# TODO(@mhguo): this is not complete!
+class SNR_ABC():
+    def __init__(self,A,B=1.0,C=1.0,gamma=5/3,E0=1e51,n0=1.0,mu=0.618,psi_x=0.2) -> None:
+        self.a10=2*(self.gamma-1)/(self.gamma+1)**2
+        #self.A=j_s*r_s/v_s/rho_s
+        self.A=A
+        self.B=B
+        self.C=C
+        self.K=1.0
+        self.gamma=gamma
+        self.ny=4#6
+        self.E0=E0
+        self.n0=n0
+        self.mu=mu
+        self.rho0=self.n0*self.mu*units.mp_cgs
+        self.psi_x=psi_x
+    def func(self,x,Y):
+        #Y=[f,g,h]
+        #a*Yprime=b
+        gamma=self.gamma
+        tau1=self.tau1
+        A,B,C=self.A,self.B,self.C,
+        a10=self.a10
+        f,g,h,l=Y[0],Y[1],Y[2],Y[3]
+        k=l*f**(5/6)
+        # TODO(@mhguo): check this!
+        phi=g*h
+        psi=1.0/(1.0+(self.psi_x/x)**4)
+        ###
+        i = h - x
+        # TODO(@mhguo): tmp psi!
+        psi=1.0/(1.0+(self.psi_x/x)**4)
+        #psi=0.5+0.5*np.tanh(100.0*(x-self.psi_x))
+        #print(psi)
+        #psi = (C*i**2-3.0*f)/(0.5*(gamma+1.0)**2*C)
+        #psi += (-0.5*(gamma+1.0)**2*C*psi)*np.exp(-(0.0/0.03)**2)/(0.5*(gamma+1.0)**2*C)
+        #psi += (-3.0*f-0.5*(gamma+1.0)**2*C*psi)*np.exp(-(i/0.01)**2)/(0.5*(gamma+1.0)**2*C)
+        #print(psi)
+        b=np.array([A*k-2*g*h/x,
+                    1.5*h*g+B*phi-A*k*h,
+                    3*f*g+0.5*(gamma+1.0)**2*g*(C*psi-B*phi*h)+A*k*((gamma+1.0)**2/4.0*g*h**2-gamma*f),
+                    2.5*tau1*l*f**(5/6)/x,
+                    ])
+        Yprime = np.zeros(Y.shape)
+        Yprime[0] = -b[0]*gamma*f*i     + b[1]*gamma*f - b[2]*i     
+        #Yprime[1] = -b[0]*g*i           + b[1]*g       - b[2]*a10/i
+        Yprime[1] = -b[0]*g*i           + b[1]*g       - b[2]*a10/i
+        #Yprime[2] =  b[0]*a10*gamma*f/g - b[1]*i       + b[2]*a10/g
+        Yprime[2] = -2*h/x*a10*gamma*f - b[1]*i  + ( 3*f+0.5*(gamma+1.0)**2*(C*psi-B*phi*h)+A*k*((gamma+1.0)**2/4.0*h**2) )*a10
+        Yprime   *= 1.0/(a10*gamma*f-g*i**2)
+        # last for l
+        Yprime[3] =  b[3]
+        '''
+        print("x:", x)
+        print("Y:", Y)
+        print("a:", a)
+        print("b:", b)
+        print("Yprime:", Yprime)
+        '''
+        return Yprime

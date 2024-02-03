@@ -709,6 +709,21 @@ class AthenaBinary:
         self.coord['vol']=self.coord['dx']*self.coord['dy']*self.coord['dz']
         return
     
+    def set_coord_new(self):
+        mb_geo, n_mbs = self.mb_geometry, self.n_mbs
+        nx1, nx2, nx3 = self.nx1_mb, self.nx2_mb, self.nx3_mb
+        x=np.swapaxes(np.linspace(mb_geo[:,0],mb_geo[:,1],nx1+1),0,1)
+        y=np.swapaxes(np.linspace(mb_geo[:,2],mb_geo[:,3],nx2+1),0,1)
+        z=np.swapaxes(np.linspace(mb_geo[:,4],mb_geo[:,5],nx3+1),0,1)
+        x,y,z=0.5*(x[:,:-1]+x[:,1:]),0.5*(y[:,:-1]+y[:,1:]),0.5*(z[:,:-1]+z[:,1:])
+        ZYX=np.swapaxes(np.asarray([np.meshgrid(z[i],y[i],x[i]) for i in range(n_mbs)]),0,1)
+        self.coord['x'],self.coord['y'],self.coord['z']=ZYX[2].swapaxes(1,2),ZYX[1].swapaxes(1,2),ZYX[0].swapaxes(1,2)
+        dx=np.asarray([np.full((nx3,nx2,nx1),(mb_geo[i,1]-mb_geo[i,0])/nx1) for i in range(n_mbs)])
+        dy=np.asarray([np.full((nx3,nx2,nx1),(mb_geo[i,3]-mb_geo[i,2])/nx2) for i in range(n_mbs)])
+        dz=np.asarray([np.full((nx3,nx2,nx1),(mb_geo[i,5]-mb_geo[i,4])/nx3) for i in range(n_mbs)])
+        self.coord['dx'],self.coord['dy'],self.coord['dz']=dx,dy,dz
+        return
+    
     def config_data(self,velr=False):
         if (self.use_e):
             self.mb_data['temp']=(self.gamma-1)*self.mb_data['eint']/self.mb_data['dens']
