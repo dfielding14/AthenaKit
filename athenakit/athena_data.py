@@ -883,7 +883,7 @@ class AthenaData:
         ax.streamplot(x*xyunit, y*xyunit, u, v, color=color,linewidth=linewidth,arrowsize=arrowsize)
         return fig
 
-    def plot_phase(self,varname='dens-temp',key='vol',bins=128,weights='vol',title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
+    def plot_phase(self,varname='dens-temp',key='vol',bins=128,weights='vol',where=None,title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
                    unit=1.0,cmap='viridis',norm='log',extent=None,density=False,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
                    figpath='',x=None,y=None,xshift=0.0,xunit=1.0,yshift=0.0,yunit=1.0,fig=None,ax=None,dpi=128,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
@@ -892,7 +892,7 @@ class AthenaData:
         try:
             dat = self.hists[key][varname]
         except:
-            dat = self.get_hist2d([varname.split('-')],bins=bins,scales=[[xscale,yscale]],weights=weights)[varname]
+            dat = self.get_hist2d([varname.split('-')],bins=bins,scales=[[xscale,yscale]],weights=weights,where=where)[varname]
         x,y = dat['edges'].values()
         im_arr = asnumpy(dat['dat'])
         extent = [x.min(),x.max(),y.min(),y.max()] if extent is None else extent
@@ -1035,3 +1035,17 @@ class AthenaDataSet:
         if (n is None):
             n = self.ns[0]
         return self.ads[n]
+
+    def __getitem__(self, n=None):
+        if (n is None):
+            n = self.ns[0]
+        return self.ads[n]
+    
+    def keys(self):
+        return self.ns
+    
+    def values(self):
+        return [self.ads[n] for n in self.ns]
+    
+    def items(self):
+        return [(n,self.ads[n]) for n in self.ns]
