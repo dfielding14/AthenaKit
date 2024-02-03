@@ -69,6 +69,7 @@ def add_gr_data(ad):
     rks = ad.data('rks')
     rks2 = ad.data('rks')**2
     sth = xp.sin(ad.data('theta'))
+    cth = xp.cos(ad.data('theta'))
     sph = xp.sin(ad.data('phi'))
     cph = xp.cos(ad.data('phi'))
     drdx = rks*ad.data('x')/(2.0*rks2 - r2 + a2)
@@ -78,10 +79,14 @@ def add_gr_data(ad):
     br = drdx *b1 + drdy *b2 + drdz *b3
     u_ph = (-rks*sph-ad.spin*cph)*sth*u_1 + (rks*cph-ad.spin*sph)*sth*u_2
     b_ph = (-rks*sph-ad.spin*cph)*sth*b_1 + (rks*cph-ad.spin*sph)*sth*b_2
+    sqrtmdet = rks2 + ad.spin**2*cth**2
     
     ad.add_data('alpha',alpha)
+    ad.add_data('lor',lor)
+    ad.add_data('q',q)
     ad.add_data('u0',u0)
     ad.add_data('u1',u1)
     ad.add_data('u2',u2)
+    ad.add_data('sqrtmdet',sqrtmdet)
     #ad.add_data_func('ux', lambda sf : sf.data('velx')/sf.data('mdot'))
     #ad.add_data_func('ur', lambda sf : sf.data('velr'))
