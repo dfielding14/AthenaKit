@@ -203,66 +203,66 @@ def add_tran(ad):
 def add_data(ad,add_bcc=True):
     for var in ['bcc1','bcc2','bcc3']:
         if ((var not in ad.data_raw.keys()) and add_bcc):
-                ad.add_data_func(var, lambda sf : sf.data('zeros'))
+                ad.add_data_func(var, lambda d : d('zeros'))
     
-    ad.add_data_func('tran_x', lambda sf : sf.tran[0,0]*sf.data('x')+sf.tran[0,1]*sf.data('y')+sf.tran[0,2]*sf.data('z'))
-    ad.add_data_func('tran_y', lambda sf : sf.tran[1,0]*sf.data('x')+sf.tran[1,1]*sf.data('y')+sf.tran[1,2]*sf.data('z'))
-    ad.add_data_func('tran_z', lambda sf : sf.tran[2,0]*sf.data('x')+sf.tran[2,1]*sf.data('y')+sf.tran[2,2]*sf.data('z'))
+    ad.add_data_func('tran_x', lambda d : d.ad.tran[0,0]*d('x')+d.ad.tran[0,1]*d('y')+d.ad.tran[0,2]*d('z'))
+    ad.add_data_func('tran_y', lambda d : d.ad.tran[1,0]*d('x')+d.ad.tran[1,1]*d('y')+d.ad.tran[1,2]*d('z'))
+    ad.add_data_func('tran_z', lambda d : d.ad.tran[2,0]*d('x')+d.ad.tran[2,1]*d('y')+d.ad.tran[2,2]*d('z'))
     
-    ad.add_data_func('tran_velx', lambda sf : sf.tran[0,0]*sf.data('velx')+sf.tran[0,1]*sf.data('vely')+sf.tran[0,2]*sf.data('velz'))
-    ad.add_data_func('tran_vely', lambda sf : sf.tran[1,0]*sf.data('velx')+sf.tran[1,1]*sf.data('vely')+sf.tran[1,2]*sf.data('velz'))
-    ad.add_data_func('tran_velz', lambda sf : sf.tran[2,0]*sf.data('velx')+sf.tran[2,1]*sf.data('vely')+sf.tran[2,2]*sf.data('velz'))
+    ad.add_data_func('tran_velx', lambda d : d.ad.tran[0,0]*d('velx')+d.ad.tran[0,1]*d('vely')+d.ad.tran[0,2]*d('velz'))
+    ad.add_data_func('tran_vely', lambda d : d.ad.tran[1,0]*d('velx')+d.ad.tran[1,1]*d('vely')+d.ad.tran[1,2]*d('velz'))
+    ad.add_data_func('tran_velz', lambda d : d.ad.tran[2,0]*d('velx')+d.ad.tran[2,1]*d('vely')+d.ad.tran[2,2]*d('velz'))
 
-    ad.add_data_func('tran_bccx', lambda sf : sf.tran[0,0]*sf.data('bccx')+sf.tran[0,1]*sf.data('bccy')+sf.tran[0,2]*sf.data('bccz'))
-    ad.add_data_func('tran_bccy', lambda sf : sf.tran[1,0]*sf.data('bccx')+sf.tran[1,1]*sf.data('bccy')+sf.tran[1,2]*sf.data('bccz'))
-    ad.add_data_func('tran_bccz', lambda sf : sf.tran[2,0]*sf.data('bccx')+sf.tran[2,1]*sf.data('bccy')+sf.tran[2,2]*sf.data('bccz'))
+    ad.add_data_func('tran_bccx', lambda d : d.ad.tran[0,0]*d('bccx')+d.ad.tran[0,1]*d('bccy')+d.ad.tran[0,2]*d('bccz'))
+    ad.add_data_func('tran_bccy', lambda d : d.ad.tran[1,0]*d('bccx')+d.ad.tran[1,1]*d('bccy')+d.ad.tran[1,2]*d('bccz'))
+    ad.add_data_func('tran_bccz', lambda d : d.ad.tran[2,0]*d('bccx')+d.ad.tran[2,1]*d('bccy')+d.ad.tran[2,2]*d('bccz'))
 
-    ad.add_data_func('tran_R', lambda sf : xp.sqrt(sf.data('tran_x')**2+sf.data('tran_y')**2))
-    ad.add_data_func('tran_velR', lambda sf : (sf.data('tran_x')*sf.data('tran_velx')+sf.data('tran_y')*sf.data('tran_vely'))/sf.data('tran_R'))
-    ad.add_data_func('tran_velphi', lambda sf : (sf.data('tran_x')*sf.data('tran_vely')-sf.data('tran_y')*sf.data('tran_velx'))/sf.data('tran_R'))
-    ad.add_data_func('tran_bccR', lambda sf : (sf.data('tran_x')*sf.data('tran_bccx')+sf.data('tran_y')*sf.data('tran_bccy'))/sf.data('tran_R'))
-    ad.add_data_func('tran_bccphi', lambda sf : (sf.data('tran_x')*sf.data('tran_bccy')-sf.data('tran_y')*sf.data('tran_bccx'))/sf.data('tran_R'))
+    ad.add_data_func('tran_R', lambda d : xp.sqrt(d('tran_x')**2+d('tran_y')**2))
+    ad.add_data_func('tran_velR', lambda d : (d('tran_x')*d('tran_velx')+d('tran_y')*d('tran_vely'))/d('tran_R'))
+    ad.add_data_func('tran_velphi', lambda d : (d('tran_x')*d('tran_vely')-d('tran_y')*d('tran_velx'))/d('tran_R'))
+    ad.add_data_func('tran_bccR', lambda d : (d('tran_x')*d('tran_bccx')+d('tran_y')*d('tran_bccy'))/d('tran_R'))
+    ad.add_data_func('tran_bccphi', lambda d : (d('tran_x')*d('tran_bccy')-d('tran_y')*d('tran_bccx'))/d('tran_R'))
 
-    ad.add_data_func('tran_stress_zphi_hydro', lambda sf : sf.data('dens')*sf.data('tran_velz')*sf.data('tran_velphi'))
-    ad.add_data_func('tran_stress_zphi_maxwell', lambda sf : -sf.data('tran_bccz')*sf.data('tran_bccphi'))
-    ad.add_data_func('tran_stress_zphi', lambda sf : sf.data('tran_stress_zphi_hydro')+sf.data('tran_stress_zphi_maxwell'))
+    ad.add_data_func('tran_stress_zphi_hydro', lambda d : d('dens')*d('tran_velz')*d('tran_velphi'))
+    ad.add_data_func('tran_stress_zphi_maxwell', lambda d : -d('tran_bccz')*d('tran_bccphi'))
+    ad.add_data_func('tran_stress_zphi', lambda d : d('tran_stress_zphi_hydro')+d('tran_stress_zphi_maxwell'))
 
-    ad.add_data_func('tran_stress_Rphi_hydro', lambda sf : sf.data('dens')*sf.data('tran_velR')*sf.data('tran_velphi'))
-    ad.add_data_func('tran_stress_Rphi_maxwell', lambda sf : -sf.data('tran_bccR')*sf.data('tran_bccphi'))
-    ad.add_data_func('tran_stress_Rphi', lambda sf : sf.data('tran_stress_Rphi_hydro')+sf.data('tran_stress_Rphi_maxwell'))
+    ad.add_data_func('tran_stress_Rphi_hydro', lambda d : d('dens')*d('tran_velR')*d('tran_velphi'))
+    ad.add_data_func('tran_stress_Rphi_maxwell', lambda d : -d('tran_bccR')*d('tran_bccphi'))
+    ad.add_data_func('tran_stress_Rphi', lambda d : d('tran_stress_Rphi_hydro')+d('tran_stress_Rphi_maxwell'))
 
-    ad.add_data_func('tran_Omega', lambda sf : xp.sqrt(sf.accel(sf.data('tran_R'))/sf.data('tran_R')))
-    ad.add_data_func('tran_dens_velR', lambda sf : sf.data('dens')*sf.data('tran_velR'))
-    ad.add_data_func('tran_dens_velz', lambda sf : sf.data('dens')*sf.data('tran_velz'))
-    ad.add_data_func('tran_radial_flow', lambda sf : 0.5*sf.data('dens')*sf.data('tran_velR')*sf.data('tran_Omega'))
-    ad.add_data_func('tran_z/R', lambda sf : sf.data('tran_z')/sf.data('tran_R'))
+    ad.add_data_func('tran_Omega', lambda d : xp.sqrt(d.ad.accel(d('tran_R'))/d('tran_R')))
+    ad.add_data_func('tran_dens_velR', lambda d : d('dens')*d('tran_velR'))
+    ad.add_data_func('tran_dens_velz', lambda d : d('dens')*d('tran_velz'))
+    ad.add_data_func('tran_radial_flow', lambda d : 0.5*d('dens')*d('tran_velR')*d('tran_Omega'))
+    ad.add_data_func('tran_z/R', lambda d : d('tran_z')/d('tran_R'))
 
-    ad.add_data_func('tran_stress_zphi_hydro/R', lambda sf : sf.data('tran_stress_zphi_hydro')/sf.data('tran_R'))
-    ad.add_data_func('tran_stress_zphi_maxwell/R', lambda sf : sf.data('tran_stress_zphi_maxwell')/sf.data('tran_R'))
-    ad.add_data_func('tran_stress_zphi/R', lambda sf : sf.data('tran_stress_zphi')/sf.data('tran_R'))
-    ad.add_data_func('tran_stress_Rphi_hydro/R', lambda sf : sf.data('tran_stress_Rphi_hydro')/sf.data('tran_R'))
-    ad.add_data_func('tran_stress_Rphi_maxwell/R', lambda sf : sf.data('tran_stress_Rphi_maxwell')/sf.data('tran_R'))
-    ad.add_data_func('tran_stress_Rphi/R', lambda sf : sf.data('tran_stress_Rphi')/sf.data('tran_R'))
+    ad.add_data_func('tran_stress_zphi_hydro/R', lambda d : d('tran_stress_zphi_hydro')/d('tran_R'))
+    ad.add_data_func('tran_stress_zphi_maxwell/R', lambda d : d('tran_stress_zphi_maxwell')/d('tran_R'))
+    ad.add_data_func('tran_stress_zphi/R', lambda d : d('tran_stress_zphi')/d('tran_R'))
+    ad.add_data_func('tran_stress_Rphi_hydro/R', lambda d : d('tran_stress_Rphi_hydro')/d('tran_R'))
+    ad.add_data_func('tran_stress_Rphi_maxwell/R', lambda d : d('tran_stress_Rphi_maxwell')/d('tran_R'))
+    ad.add_data_func('tran_stress_Rphi/R', lambda d : d('tran_stress_Rphi')/d('tran_R'))
 
-    ad.add_data_func('dens_initial', lambda sf : xp.interp(sf.data('r'),xp.asarray(sf.rad_initial['r']),xp.asarray(sf.rad_initial['dens'])))
-    ad.add_data_func('temp_initial', lambda sf : xp.interp(sf.data('r'),xp.asarray(sf.rad_initial['r']),xp.asarray(sf.rad_initial['temp'])))
-    ad.add_data_func('vel_kep', lambda sf : xp.interp(sf.data('r'),xp.asarray(sf.rad_initial['r']),xp.asarray(sf.rad_initial['v_kep'])))
-    ad.add_data_func('t_hot', lambda sf : sf.header('problem','tf_hot',float)*sf.data('temp_initial'))
+    ad.add_data_func('dens_initial', lambda d : xp.interp(d('r'),xp.asarray(d.ad.rad_initial['r']),xp.asarray(d.ad.rad_initial['dens'])))
+    ad.add_data_func('temp_initial', lambda d : xp.interp(d('r'),xp.asarray(d.ad.rad_initial['r']),xp.asarray(d.ad.rad_initial['temp'])))
+    ad.add_data_func('vel_kep', lambda d : xp.interp(d('r'),xp.asarray(d.ad.rad_initial['r']),xp.asarray(d.ad.rad_initial['v_kep'])))
+    ad.add_data_func('t_hot', lambda d : d.ad.header('problem','tf_hot',float)*d('temp_initial'))
 
     '''
     for var in ['mdot','mdotin','mdotout','momdot','momdotin','momdotout','eidot','eidotin','eidotout','ekdot','ekdotin','ekdotout']:
-        ad.add_data_func(var, lambda sf, var=var : 4.0*xp.pi*sf.data('r')**2*sf.data(var.replace('dot','flxr')))
-        ad.add_data_func(var+'_cold', lambda sf, var=var : sf.data(var)*(sf.data('temp')<sf.header('problem','t_cold',float)))
-        ad.add_data_func(var+'_warm', lambda sf, var=var : sf.data(var)*(sf.data('temp')>=sf.header('problem','t_cold',float))*(sf.data('temp')<sf.data('t_hot')))
-        ad.add_data_func(var+'_hot', lambda sf, var=var : sf.data(var)*(sf.data('temp')>=sf.data('t_hot')))
+        ad.add_data_func(var, lambda d, var=var : 4.0*xp.pi*d('r')**2*d(var.replace('dot','flxr')))
+        ad.add_data_func(var+'_cold', lambda d, var=var : d(var)*(d('temp')<d.ad.header('problem','t_cold',float)))
+        ad.add_data_func(var+'_warm', lambda d, var=var : d(var)*(d('temp')>=d.ad.header('problem','t_cold',float))*(d('temp')<d('t_hot')))
+        ad.add_data_func(var+'_hot', lambda d, var=var : d(var)*(d('temp')>=d('t_hot')))
     '''
     for key,inte in zip(['mdot','momdot','eidot','ekdot','edot'],
                         ['dens','momr',  'eint', 'ekin', 'etot']):
         for direc in ['','in','out']:
             var = key+direc
-            ad.add_data_func(var, lambda sf, inte=inte, direc=direc : 4.0*xp.pi*sf.data('r')**2*sf.data(inte)*sf.data('velr'+direc))
-            ad.add_data_func(var+'_cold', lambda sf, var=var : sf.data(var)*(sf.data('temp')<sf.header('problem','t_cold',float)))
-            ad.add_data_func(var+'_warm', lambda sf, var=var : sf.data(var)*(sf.data('temp')>=sf.header('problem','t_cold',float))*(sf.data('temp')<sf.data('t_hot')))
-            ad.add_data_func(var+'_hot', lambda sf, var=var : sf.data(var)*(sf.data('temp')>=sf.data('t_hot')))
+            ad.add_data_func(var, lambda d, inte=inte, direc=direc : 4.0*xp.pi*d('r')**2*d(inte)*d('velr'+direc))
+            ad.add_data_func(var+'_cold', lambda d, var=var : d(var)*(d('temp')<d.ad.header('problem','t_cold',float)))
+            ad.add_data_func(var+'_warm', lambda d, var=var : d(var)*(d('temp')>=d.ad.header('problem','t_cold',float))*(d('temp')<d('t_hot')))
+            ad.add_data_func(var+'_hot', lambda d, var=var : d(var)*(d('temp')>=d('t_hot')))
 
     return

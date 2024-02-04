@@ -13,19 +13,15 @@ from ..athena_data import asnumpy
 def add_tools(ad):
     ad.rmin = float(asnumpy(np.min(ad.data('r').min())))
     ad.rmax = float(np.min(np.abs([ad.x1min,ad.x1max,ad.x2min,ad.x2max,ad.x3min,ad.x3max])))
-            
+
     return
 
 def add_data(ad,is_gr=False,add_bcc=True):
-    for var in ['bcc1','bcc2','bcc3']:
-        if ((var not in ad.data_raw.keys()) and add_bcc):
-                ad.add_data_func(var, lambda sf : sf.data('zeros'))
-
     for key,inte in zip(['mdot','momdot','eidot','ekdot','edot'],
                         ['dens','momr',  'eint', 'ekin', 'etot']):
         for direc in ['','in','out']:
             var = key+direc
-            ad.add_data_func(var, lambda sf, inte=inte, direc=direc : 4.0*xp.pi*sf.data('r')**2*sf.data(inte)*sf.data('velr'+direc))
+            ad.add_data_func(var, lambda data, inte=inte, direc=direc : 4.0*xp.pi*data('r')**2*data(inte)*data('velr'+direc))
 
     if (is_gr): add_gr_data(ad)
 

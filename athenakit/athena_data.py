@@ -230,105 +230,110 @@ class AthenaData:
         return
     
     def _config_data_func(self):
-        self.data_func['zeros'] = lambda self : xp.zeros(self.data('dens').shape)
-        self.data_func['ones'] = lambda self : xp.ones(self.data('dens').shape)
-        self.data_func['vol'] = lambda self : self.data('dx')*self.data('dy')*self.data('dz')
-        self.data_func['r'] = lambda self : xp.sqrt(self.data('x')**2+self.data('y')**2+self.data('z')**2)
-        self.data_func['R'] = lambda self : xp.sqrt(self.data('x')**2+self.data('y')**2)
-        self.data_func['theta'] = lambda self : xp.arccos(self.data('z')/self.data('r'))
-        self.data_func['phi'] = lambda self : xp.arctan2(self.data('y'),self.data('x'))
-        self.data_func['mass'] = lambda self : self.data('vol')*self.data('dens')
-        self.data_func['pres'] = lambda self : (self.gamma-1)*self.data('eint')
-        self.data_func['pgas'] = lambda self : self.data('pres')
-        self.data_func['temp'] = lambda self : self.data('pres')/self.data('dens')
-        self.data_func['entropy'] = lambda self : self.data('pres')/self.data('dens')**self.gamma
-        self.data_func['c_s^2'] = lambda self : self.gamma*self.data('pres')/self.data('dens')
-        self.data_func['c_s'] = lambda self : xp.sqrt(self.data('c_s^2'))
-        self.data_func['momx'] = lambda self : self.data('dens')*self.data('velx')
-        self.data_func['momy'] = lambda self : self.data('dens')*self.data('vely')
-        self.data_func['momz'] = lambda self : self.data('dens')*self.data('velz')
-        self.data_func['velr'] = lambda self : (self.data('velx')*self.data('x')+\
-                                               self.data('vely')*self.data('y')+\
-                                               self.data('velz')*self.data('z'))/self.data('r')
-        self.data_func['vtheta'] = lambda self : (self.data('z')*self.data('velr')-self.data('r')*self.data('velz'))/self.data('R')
-        self.data_func['vphi'] = lambda self : (self.data('x')*self.data('vely')-self.data('y')*self.data('velx'))/self.data('r')
-        self.data_func['momr'] = lambda self : self.data('dens')*self.data('velr')
-        self.data_func['velrin'] = lambda self : xp.minimum(self.data('velr'),0.0)
-        self.data_func['velrout'] = lambda self : xp.maximum(self.data('velr'),0.0)
-        self.data_func['velin'] = lambda self : self.data('velrin')
-        self.data_func['velout'] = lambda self : self.data('velrout')
-        self.data_func['vtot^2'] = lambda self : self.data('velx')**2+self.data('vely')**2+self.data('velz')**2
-        self.data_func['vtot'] = lambda self : xp.sqrt(self.data('vtot^2'))
-        self.data_func['vrot'] = lambda self : xp.sqrt(self.data('vtot^2')-self.data('velr')**2)
-        self.data_func['momtot'] = lambda self : self.data('dens')*self.data('vtot')
-        self.data_func['ekin'] = lambda self : 0.5*self.data('dens')*self.data('vtot^2')
-        self.data_func['egas'] = lambda self : self.data('ekin')+self.data('eint')
-        self.data_func['amx'] = lambda self : self.data('y')*self.data('velz')-self.data('z')*self.data('vely')
-        self.data_func['amy'] = lambda self : self.data('z')*self.data('velx')-self.data('x')*self.data('velz')
-        self.data_func['amz'] = lambda self : self.data('x')*self.data('vely')-self.data('y')*self.data('velx')
-        self.data_func['amtot'] = lambda self : self.data('r')*self.data('vrot')
-        self.data_func['mflxr'] = lambda self : self.data('dens')*self.data('velr')
-        self.data_func['mflxrin'] = lambda self : self.data('dens')*self.data('velin')
-        self.data_func['mflxrout'] = lambda self : self.data('dens')*self.data('velout')
-        self.data_func['momflxr'] = lambda self : self.data('dens')*self.data('velr')**2
-        self.data_func['momflxrin'] = lambda self : self.data('dens')*self.data('velr')*self.data('velin')
-        self.data_func['momflxrout'] = lambda self : self.data('dens')*self.data('velr')*self.data('velout')
-        self.data_func['eiflxr'] = lambda self : self.data('eint')*self.data('velr')
-        self.data_func['eiflxrin'] = lambda self : self.data('eint')*self.data('velin')
-        self.data_func['eiflxrout'] = lambda self : self.data('eint')*self.data('velout')
-        self.data_func['ekflxr'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velr')
-        self.data_func['ekflxrin'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velin')
-        self.data_func['ekflxrout'] = lambda self : self.data('dens')*.5*self.data('vtot^2')*self.data('velout')
+        self.data_func['zeros'] = lambda d : xp.zeros(d('dens').shape)
+        self.data_func['ones'] = lambda d : xp.ones(d('dens').shape)
+        self.data_func['vol'] = lambda d : d('dx')*d('dy')*d('dz')
+        self.data_func['r'] = lambda d : xp.sqrt(d('x')**2+d('y')**2+d('z')**2)
+        self.data_func['R'] = lambda d : xp.sqrt(d('x')**2+d('y')**2)
+        self.data_func['theta'] = lambda d : xp.arccos(d('z')/d('r'))
+        self.data_func['phi'] = lambda d : xp.arctan2(d('y'),d('x'))
+        self.data_func['mass'] = lambda d : d('vol')*d('dens')
+        self.data_func['pres'] = lambda d : (d.ad.gamma-1)*d('eint')
+        self.data_func['pgas'] = lambda d : d('pres')
+        self.data_func['temp'] = lambda d : d('pres')/d('dens')
+        self.data_func['entropy'] = lambda d : d('pres')/d('dens')**d.ad.gamma
+        self.data_func['c_s^2'] = lambda d : d.ad.gamma*d('pres')/d('dens')
+        self.data_func['c_s'] = lambda d : xp.sqrt(d('c_s^2'))
+        self.data_func['momx'] = lambda d : d('dens')*d('velx')
+        self.data_func['momy'] = lambda d : d('dens')*d('vely')
+        self.data_func['momz'] = lambda d : d('dens')*d('velz')
+        self.data_func['velr'] = lambda d : (d('velx')*d('x')+d('vely')*d('y')+d('velz')*d('z'))/d('r')
+        self.data_func['vtheta'] = lambda d : (d('z')*d('velr')-d('r')*d('velz'))/d('R')
+        self.data_func['vphi'] = lambda d : (d('x')*d('vely')-d('y')*d('velx'))/d('r')
+        self.data_func['momr'] = lambda d : d('dens')*d('velr')
+        self.data_func['velrin'] = lambda d : xp.minimum(d('velr'),0.0)
+        self.data_func['velrout'] = lambda d : xp.maximum(d('velr'),0.0)
+        self.data_func['velin'] = lambda d : d('velrin')
+        self.data_func['velout'] = lambda d : d('velrout')
+        self.data_func['vtot^2'] = lambda d : d('velx')**2+d('vely')**2+d('velz')**2
+        self.data_func['vtot'] = lambda d : xp.sqrt(d('vtot^2'))
+        self.data_func['vrot'] = lambda d : xp.sqrt(d('vtot^2')-d('velr')**2)
+        self.data_func['momtot'] = lambda d : d('dens')*d('vtot')
+        self.data_func['ekin'] = lambda d : 0.5*d('dens')*d('vtot^2')
+        self.data_func['egas'] = lambda d : d('ekin')+d('eint')
+        self.data_func['amx'] = lambda d : d('y')*d('velz')-d('z')*d('vely')
+        self.data_func['amy'] = lambda d : d('z')*d('velx')-d('x')*d('velz')
+        self.data_func['amz'] = lambda d : d('x')*d('vely')-d('y')*d('velx')
+        self.data_func['amtot'] = lambda d : d('r')*d('vrot')
+        self.data_func['mflxr'] = lambda d : d('dens')*d('velr')
+        self.data_func['mflxrin'] = lambda d : d('dens')*d('velin')
+        self.data_func['mflxrout'] = lambda d : d('dens')*d('velout')
+        self.data_func['momflxr'] = lambda d : d('dens')*d('velr')**2
+        self.data_func['momflxrin'] = lambda d : d('dens')*d('velr')*d('velin')
+        self.data_func['momflxrout'] = lambda d : d('dens')*d('velr')*d('velout')
+        self.data_func['eiflxr'] = lambda d : d('eint')*d('velr')
+        self.data_func['eiflxrin'] = lambda d : d('eint')*d('velin')
+        self.data_func['eiflxrout'] = lambda d : d('eint')*d('velout')
+        self.data_func['ekflxr'] = lambda d : d('dens')*.5*d('vtot^2')*d('velr')
+        self.data_func['ekflxrin'] = lambda d : d('dens')*.5*d('vtot^2')*d('velin')
+        self.data_func['ekflxrout'] = lambda d : d('dens')*.5*d('vtot^2')*d('velout')
         if not self.is_mhd:
             for var in ('bcc1','bcc2','bcc3'):
-                self.data_func[var] = lambda self : self.data('zeros')
-        self.data_func['bccx'] = lambda self : self.data('bcc1')
-        self.data_func['bccy'] = lambda self : self.data('bcc2')
-        self.data_func['bccz'] = lambda self : self.data('bcc3')
-        self.data_func['bccr'] = lambda self : (self.data('bccx')*self.data('x')+\
-                                                self.data('bccy')*self.data('y')+\
-                                                self.data('bccz')*self.data('z'))/self.data('r')
-        self.data_func['btheta'] = lambda self : (self.data('z')*self.data('bccr')-self.data('r')*self.data('bccz'))/self.data('R')
-        self.data_func['bphi'] = lambda self : (self.data('x')*self.data('bccy')-self.data('y')*self.data('bccx'))/self.data('r')
-        self.data_func['btot^2'] = lambda self : self.data('bccx')**2+self.data('bccy')**2+self.data('bccz')**2
-        self.data_func['btot'] = lambda self : xp.sqrt(self.data('btot^2'))
-        self.data_func['brot'] = lambda self : xp.sqrt(self.data('btot^2')-self.data('bccr')**2)
-        self.data_func['v_A^2'] = lambda self : self.data('btot^2')/self.data('dens')
-        self.data_func['v_A'] = lambda self : xp.sqrt(self.data('v_A^2'))
-        self.data_func['pmag'] = lambda self : 0.5*self.data('btot^2')
-        self.data_func['emag'] = lambda self : 0.5*self.data('btot^2')
-        self.data_func['beta'] = lambda self : self.data('pgas')/self.data('pmag')
-        self.data_func['1/beta'] = lambda self : self.data('pmag')/self.data('pgas')
-        self.data_func['ptot'] = lambda self : self.data('pres')+self.data('pmag') if self.is_mhd\
-                                               else self.data('pres')
-        self.data_func['etot'] = lambda self : self.data('ekin')+self.data('eint')+self.data('emag') if self.is_mhd\
-                                               else self.data('ekin')+self.data('eint')
+                self.data_func[var] = lambda d : d('zeros')
+        self.data_func['bccx'] = lambda d : d('bcc1')
+        self.data_func['bccy'] = lambda d : d('bcc2')
+        self.data_func['bccz'] = lambda d : d('bcc3')
+        self.data_func['bccr'] = lambda d : (d('bccx')*d('x')+d('bccy')*d('y')+d('bccz')*d('z'))/d('r')
+        self.data_func['btheta'] = lambda d : (d('z')*d('bccr')-d('r')*d('bccz'))/d('R')
+        self.data_func['bphi'] = lambda d : (d('x')*d('bccy')-d('y')*d('bccx'))/d('r')
+        self.data_func['btot^2'] = lambda d : d('bccx')**2+d('bccy')**2+d('bccz')**2
+        self.data_func['btot'] = lambda d : xp.sqrt(d('btot^2'))
+        self.data_func['brot'] = lambda d : xp.sqrt(d('btot^2')-d('bccr')**2)
+        self.data_func['v_A^2'] = lambda d : d('btot^2')/d('dens')
+        self.data_func['v_A'] = lambda d : xp.sqrt(d('v_A^2'))
+        self.data_func['pmag'] = lambda d : 0.5*d('btot^2')
+        self.data_func['emag'] = lambda d : 0.5*d('btot^2')
+        self.data_func['beta'] = lambda d : d('pgas')/d('pmag')
+        self.data_func['1/beta'] = lambda d : d('pmag')/d('pgas')
+        self.data_func['ptot'] = lambda d : d('pres')+d('pmag') if d.ad.is_mhd else d('pres')
+        self.data_func['etot'] = lambda d : d('ekin')+d('eint')+d('emag') if d.ad.is_mhd\
+                                               else d('ekin')+d('eint')
         return
 
     @property
     def data_list(self):
         return list(self.coord.keys())+list(self.data_raw.keys())+list(self.data_func.keys())
 
-    def data(self,var):
+    def data(self,var,**kwargs):
         if (type(var) is str):
             # coordinate
             if (var in self.coord.keys()):
+                if (kwargs.get('dtype')=='uniform'):
+                    return self._coord_uniform(var,**kwargs)
                 return self.coord[var]
             # raw data
             elif (var in self.data_raw.keys()):
+                if (kwargs.get('dtype')=='uniform'):
+                    return self._data_raw_uniform(var,**kwargs)
                 return self.data_raw[var]
             # derived data
             elif (var in self.data_func.keys()):
-                return self.data_func[var](self)
+                data = lambda v:self.data(v,**kwargs)
+                data.ad = self
+                return self.data_func[var](data)
             else:
                 raise ValueError(f"No variable callled '{var}' ")
         elif (type(var) in [list,tuple]):
-            return [self.data(v) for v in var]
+            return [self.data(v,**kwargs) for v in var]
         else:
-            return var
+            raise ValueError(f"var '{var}' not supported")
+        
+    # an alias for data
+    def d(self,var,**kwargs):
+        return self.data(var,**kwargs)
 
     ### get data in a single array ###
-    def cell_faces(self,level=0,xyz=[]):
+    def _cell_info(self,level=0,xyz=[]):
         if (not xyz):
             xyz = [self.x1min,self.x1max,self.x2min,self.x2max,self.x3min,self.x3max]
         # level is physical level
@@ -341,22 +346,42 @@ class AthenaData:
         j_max = int((xyz[3]-self.x2min)*nx2_fac)
         k_min = int((xyz[4]-self.x3min)*nx3_fac)
         k_max = int((xyz[5]-self.x3min)*nx3_fac)
+        dx = (xyz[1]-xyz[0])/(i_max-i_min)
+        dy = (xyz[3]-xyz[2])/(j_max-j_min)
+        dz = (xyz[5]-xyz[4])/(k_max-k_min)
         xf=xp.linspace(xyz[0],xyz[1],i_max-i_min+1)
         yf=xp.linspace(xyz[2],xyz[3],j_max-j_min+1)
         zf=xp.linspace(xyz[4],xyz[5],k_max-k_min+1)
-        return xf,yf,zf
+        return xf,yf,zf,dx,dy,dz
     
-    def cell_centers(self,level=0,xyz=[]):
-        xf,yf,zf=self.cell_faces(level,xyz)
+    def _cell_faces(self,level=0,xyz=[]):
+        return self._cell_info(level,xyz)[:3]
+    
+    def _cell_centers(self,level=0,xyz=[]):
+        xf,yf,zf=self._cell_faces(level,xyz)
         xc,yc,zc=0.5*(xf[:-1]+xf[1:]),0.5*(yf[:-1]+yf[1:]),0.5*(zf[:-1]+zf[1:])
         return xc,yc,zc
+    
+    def _cell_length(self,level=0,xyz=[]):
+        return self._cell_info(level,xyz)[3:]
 
-    def coord_uniform(self,level=0,xyz=[]):
-        xc,yc,zc=self.cell_centers(level,xyz)
+    def _xyz_uniform(self,level=0,xyz=[]):
+        xc,yc,zc=self._cell_centers(level,xyz)
         ZYX=xp.meshgrid(zc,yc,xc)
         return ZYX[2].swapaxes(0,1),ZYX[1].swapaxes(0,1),ZYX[0].swapaxes(0,1)
+    
+    def _coord_uniform(self,var,level=0,xyz=[],**kwargs):
+        xc,yc,zc=self._cell_centers(level,xyz)
+        dx,dy,dz=self._cell_length(level,xyz)
+        if (var=='x'): return xp.meshgrid(zc,yc,xc)[2].swapaxes(0,1)
+        if (var=='y'): return xp.meshgrid(zc,yc,xc)[1].swapaxes(0,1)
+        if (var=='z'): return xp.meshgrid(zc,yc,xc)[0].swapaxes(0,1)
+        if (var=='dx'): return xp.full((zc.size,yc.size,xc.size),dx)
+        if (var=='dy'): return xp.full((zc.size,yc.size,xc.size),dy)
+        if (var=='dz'): return xp.full((zc.size,yc.size,xc.size),dz)
+        raise ValueError(f"var '{var}' not supported")
 
-    def data_uniform(self,var,level=0,xyz=[]):
+    def _data_raw_uniform(self,var,level=0,xyz=[],**kwargs):
         if (not xyz):
             xyz = [self.x1min,self.x1max,self.x2min,self.x2max,self.x3min,self.x3max]
         # block_level is physical level of mesh refinement
@@ -488,7 +513,7 @@ class AthenaData:
                                                                 /(s**num_extended_dims)
         return data
 
-    def axis_index(self,axis):
+    def _axis_index(self,axis):
         if (axis=='z'): return 0
         if (axis=='y'): return 1
         if (axis=='x'): return 2
@@ -708,7 +733,7 @@ class AthenaData:
 
     def get_slice_faces(self,zoom=0,level=0,xyz=[],axis='z'):
         xyz = self.xyz(zoom=zoom,level=level,axis=axis) if (not xyz) else xyz
-        x,y,z=self.cell_faces(level=level,xyz=xyz)
+        x,y,z=self._cell_faces(level=level,xyz=xyz)
         if (axis=='z'): return asnumpy({'x':x,'y':y})
         elif (axis=='y'): return asnumpy({'x':x,'z':z})
         else: return asnumpy({'y':y,'z':z})
@@ -719,15 +744,15 @@ class AthenaData:
 
     def get_slice_coord(self,zoom=0,level=0,xyz=[],axis='z'):
         xyz = self.xyz(zoom=zoom,level=level,axis=axis) if (not xyz) else xyz
-        x,y,z=self.coord_uniform(level=level,xyz=xyz)
-        axis = self.axis_index(axis)
+        x,y,z=self._xyz_uniform(level=level,xyz=xyz)
+        axis = self._axis_index(axis)
         return asnumpy({'x':xp.average(x,axis=axis),'y':xp.average(y,axis=axis),'z':xp.average(z,axis=axis)})
 
     # TODO(@mhguo): we should have the ability to get slice at any position with any direction
     def slice(self,var='dens',zoom=0,level=0,xyz=[],axis='z'):
         xyz = self.xyz(zoom=zoom,level=level,axis=axis) if (not xyz) else xyz
-        axis = self.axis_index(axis)
-        return asnumpy({var:xp.average(self.data_uniform(var,level=level,xyz=xyz),axis=axis)})
+        axis = self._axis_index(axis)
+        return asnumpy({var:xp.average(self.data(var,dtype='uniform',level=level,xyz=xyz),axis=axis)})
     
     def get_slice(self,varl,**kwargs):
         slices = {}

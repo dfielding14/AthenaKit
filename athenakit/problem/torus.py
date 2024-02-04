@@ -16,12 +16,7 @@ def add_tools(ad):
     return
 
 def add_data(ad,add_bcc=True):
-    if ('bcc1' not in ad.data_raw.keys()) and add_bcc:
-        ad.add_data_func('bcc1', lambda sf : sf.data('zeros'))
-        ad.add_data_func('bcc2', lambda sf : sf.data('zeros'))
-        ad.add_data_func('bcc3', lambda sf : sf.data('zeros'))
-
     for var in ['mdot','mdotin','mdotout','momdot','momdotin','momdotout','ekdot','ekdotin','ekdotout']:
-        ad.add_data_func(var, lambda sf, var=var : 4.0*xp.pi*sf.data('r')**2*sf.data(var.replace('dot','flxr')))
+        ad.add_data_func(var, lambda data, var=var : 4.0*xp.pi*data('r')**2*data(var.replace('dot','flxr')))
 
     return
