@@ -19,6 +19,7 @@ def add_data(ad,add_bcc=True):
     for var in ['bcc1','bcc2','bcc3']:
         if ((var not in ad.data_raw.keys()) and add_bcc):
                 ad.add_data_func(var, lambda data : data('zeros'))
+    ad.add_data_func('z/R', lambda data : data('z')/data('R'))
     ad.add_data_func('velR', lambda data : (data('velx')*data('x')+data('vely')*data('y'))/data('R'))
     ad.add_data_func('velphi', lambda data : (-data('velx')*data('y')+data('vely')*data('x'))/data('R'))
     ad.add_data_func('bccR', lambda data : (data('bccx')*data('x')+data('bccy')*data('y'))/data('R'))

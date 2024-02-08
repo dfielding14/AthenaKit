@@ -583,7 +583,7 @@ class AthenaData:
         range_0 = range
         for varl,scale in zip(varll,scales):
             arr = [self.data(v)[where].ravel() for v in varl]
-            histname = '-'.join(varl)
+            histname = ','.join(varl)
             # get bins
             bins = [bins_0]*len(varl)
             scale = [scale]*len(varl) if (type(scale) is str) else scale
@@ -694,7 +694,7 @@ class AthenaData:
             self.profs[key] = {}
         self.profs[key].update(self.get_profile(bin_var,varl,bins=bins,weights=weights,**kwargs))
     def set_profile2d(self,bin_varl,varl,key=None,bins=256,weights='vol',**kwargs):
-        key = '-'.join(bin_varl) if key is None else key
+        key = ','.join(bin_varl) if key is None else key
         if key not in self.profs.keys():
             self.profs[key] = {}
         self.profs[key].update(self.get_profile2d(bin_varl,varl,bins=bins,weights=weights,**kwargs))
@@ -908,7 +908,7 @@ class AthenaData:
         ax.streamplot(x*xyunit, y*xyunit, u, v, color=color,linewidth=linewidth,arrowsize=arrowsize)
         return fig
 
-    def plot_phase(self,varname='dens-temp',key='vol',bins=128,weights='vol',where=None,title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
+    def plot_phase(self,varname='dens,temp',key='vol',bins=128,weights='vol',where=None,title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
                    unit=1.0,cmap='viridis',norm='log',extent=None,density=False,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
                    figpath='',x=None,y=None,xshift=0.0,xunit=1.0,yshift=0.0,yunit=1.0,fig=None,ax=None,dpi=128,**kwargs):
         fig=plt.figure(dpi=dpi) if fig is None else fig
@@ -917,7 +917,8 @@ class AthenaData:
         try:
             dat = self.hists[key][varname]
         except:
-            dat = self.get_hist2d([varname.split('-')],bins=bins,scales=[[xscale,yscale]],weights=weights,where=where)[varname]
+            varl = varname.split(',') if ',' in varname else varname.split('-')
+            dat = self.get_hist2d([varl],bins=bins,scales=[[xscale,yscale]],weights=weights,where=where)[varname]
         x,y = dat['edges'].values()
         im_arr = asnumpy(dat['dat'])
         extent = [x.min(),x.max(),y.min(),y.max()] if extent is None else extent
@@ -1025,6 +1026,23 @@ class AthenaData:
             fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
         if (returnall):
             return fig,ax,im,quiver,strm
+        return fig
+
+    def plot_profile(self,var='r,dens',unit=1.0,xunit=1.0,bins=256,weights='vol',fig=None,ax=None,dpi=200,xscale='log',yscale='log',xlabel='X',ylabel='Y',returnall=False,**kwargs):
+        fig=plt.figure(dpi=dpi) if fig is None else fig
+        ax = plt.axes() if ax is None else ax
+        binv, v = var.split(',')
+        try:
+            prof = self.profs[binv]
+        except:
+            prof = self.get_profile(bin_var=binv,varl=[v],bins=bins,weights=weights,scales=[xscale,yscale])
+        line=ax.plot(prof[binv]*xunit,prof[v]*unit,**kwargs)
+        if (returnall):
+            return fig,ax,line
+        ax.set_xscale(xscale)
+        ax.set_yscale(yscale)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
         return fig
 
 class AthenaDataSet:
