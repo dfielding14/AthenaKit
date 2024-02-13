@@ -1,14 +1,11 @@
 import os
 from time import sleep
 import numpy as np
-global cupy_enabled
-try:
+from . import macros
+if (macros.cupy_enabled):
     import cupy as xp
-    xp.array(0)
-    cupy_enabled = True
-except:
-    import numpy as xp
-    cupy_enabled = False
+else:
+    xp = np
 from matplotlib import pyplot as plt
 from matplotlib import colors as clr
 from matplotlib import cm

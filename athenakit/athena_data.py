@@ -1,14 +1,6 @@
 import os
 from pathlib import Path
 import numpy as np
-global cupy_enabled
-try:
-    import cupy as xp
-    xp.array(0)
-    cupy_enabled = True
-except:
-    import numpy as xp
-    cupy_enabled = False
 import h5py
 import pickle
 import warnings
@@ -18,6 +10,14 @@ from matplotlib import pyplot as plt
 
 from .io import read_binary
 from .utils import save_dict_to_hdf5, load_dict_from_hdf5
+from . import macros
+if (macros.cupy_enabled):
+    import cupy as xp
+    xp.cuda.set_allocator(xp.cuda.MemoryPool().malloc)
+else:
+    xp = np
+if (macros.mpi_enabled):
+    from . import mpi
 
 def load(filename):
     ad = AthenaData(filename)
@@ -29,8 +29,8 @@ def asnumpy(arr):
         return {k:asnumpy(v) for k,v in arr.items()}
     if (type(arr) is list):
         return [asnumpy(a) for a in arr]
-    if (cupy_enabled):
-        return xp.asnumpy(arr)
+    if (macros.cupy_enabled):
+        return (xp.asnumpy(arr)).astype(float)
     else:
         return arr
 
@@ -70,14 +70,15 @@ class AthenaData:
             self.hdf5_name = filename
             self.load_pickle(filename,**kwargs)
         else:
-            raise ValueError(f"Unknown file type: {filename.split('.')[-1]}")
+            raise ValueError(f"Unsupported file type: {filename.split('.')[-1]}")
         if (config):
             self.config()
         return
 
     def save(self,filename,except_keys=[],
-             default_except_keys=['binary', 'h5file', 'h5dic', 'coord', 'data_raw', 'data_func'],
+             default_except_keys=['binary', 'h5file', 'h5dic', 'coord', 'data_raw', 'data_func', 'mb_list'],
              **kwargs):
+        if (macros.rank!=0): return
         dic={}
         for k,v in self.__dict__.items():
             if (k not in except_keys+default_except_keys and not callable(v)):
@@ -90,7 +91,7 @@ class AthenaData:
         elif (filename.endswith(('.p','.pkl'))):
             self.save_pickle(dic,filename,**kwargs)
         else:
-            raise ValueError(f"Unknown file type: {filename.split('.')[-1]}")
+            raise ValueError(f"Unsupported file type: {filename.split('.')[-1]}")
         return
 
     def load_binary(self,filename):
@@ -107,6 +108,7 @@ class AthenaData:
 
     def load_hdf5(self,filename,**kwargs):
         self._load_from_dic(load_dict_from_hdf5(filename),**kwargs)
+        self._config_attrs_from_header()
         return
 
     def save_hdf5(self,dic,filename):
@@ -117,7 +119,7 @@ class AthenaData:
         pickle.dump(dic,open(filename,'wb'))
         return
 
-    def _load_from_dic(self,dic,except_keys=['header', 'data', 'binary', 'coord', 'data_raw']):
+    def _load_from_dic(self,dic,except_keys=['header', 'data', 'binary', 'coord', 'data_raw', 'mb_data']):
         for k,v in dic.items():
             if (k not in except_keys):
                 self.__dict__[k]=v
@@ -142,7 +144,11 @@ class AthenaData:
         self.cycle = self.h5file.attrs['NumCycles']
         self.n_mbs = self.h5file.attrs['NumMeshBlocks']
         # @mhguo: using numpy here because cupy would be very slow when
-        # accessing mb_logical and mb_geometry later (in data_uniform())
+        # accessing mb_logical and mb_geometry later (in _data_raw_uniform())
+        rank, size = macros.rank, macros.size
+        my_mb_beg = rank * self.n_mbs // size + min(rank, self.n_mbs % size)
+        my_mb_end = my_mb_beg + self.n_mbs // size + (rank < self.n_mbs % size)
+        self.mb_list = np.arange(my_mb_beg, my_mb_end)
         self.mb_logical = np.append(self.h5dic['LogicalLocations'],self.h5dic['Levels'].reshape(-1,1),axis=1)
         self.mb_geometry = np.asarray([self.h5dic['x1f'][:,0],self.h5dic['x1f'][:,-1],
                                        self.h5dic['x2f'][:,0],self.h5dic['x2f'][:,-1],
@@ -151,7 +157,7 @@ class AthenaData:
         for ds_n,num in enumerate(self.h5file.attrs['NumVariables']):
             for i in range(num):
                 var = self.h5file.attrs['VariableNames'][n_var_read+i].decode("utf-8")
-                self.data_raw[var] = xp.asarray(self.h5dic[self.h5file.attrs['DatasetNames'][ds_n].decode("utf-8")][i])
+                self.data_raw[var] = xp.asarray(self.h5dic[self.h5file.attrs['DatasetNames'][ds_n].decode("utf-8")][i][self.mb_list])
             n_var_read += num
         return
 
@@ -206,17 +212,17 @@ class AthenaData:
         return
     
     def config_coord(self):
-        mb_geo, n_mbs = self.mb_geometry, self.n_mbs
+        mb_geo, mb_list = self.mb_geometry, self.mb_list
         nx1, nx2, nx3 = self.nx1, self.nx2, self.nx3
-        x=xp.swapaxes(xp.linspace(mb_geo[:,0],mb_geo[:,1],nx1+1),0,1)
-        y=xp.swapaxes(xp.linspace(mb_geo[:,2],mb_geo[:,3],nx2+1),0,1)
-        z=xp.swapaxes(xp.linspace(mb_geo[:,4],mb_geo[:,5],nx3+1),0,1)
+        x=xp.swapaxes(xp.linspace(mb_geo[mb_list,0],mb_geo[mb_list,1],nx1+1),0,1)
+        y=xp.swapaxes(xp.linspace(mb_geo[mb_list,2],mb_geo[mb_list,3],nx2+1),0,1)
+        z=xp.swapaxes(xp.linspace(mb_geo[mb_list,4],mb_geo[mb_list,5],nx3+1),0,1)
         x,y,z=0.5*(x[:,:-1]+x[:,1:]),0.5*(y[:,:-1]+y[:,1:]),0.5*(z[:,:-1]+z[:,1:])
-        ZYX=xp.swapaxes(xp.asarray([xp.meshgrid(z[i],y[i],x[i]) for i in range(n_mbs)]),0,1)
+        ZYX=xp.swapaxes(xp.asarray([xp.meshgrid(z[i],y[i],x[i]) for i in range(len(mb_list))]),0,1)
         self.coord['x'],self.coord['y'],self.coord['z']=ZYX[2].swapaxes(1,2),ZYX[1].swapaxes(1,2),ZYX[0].swapaxes(1,2)
-        dx=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,1]-mb_geo[i,0])/nx1) for i in range(n_mbs)])
-        dy=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,3]-mb_geo[i,2])/nx2) for i in range(n_mbs)])
-        dz=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,5]-mb_geo[i,4])/nx3) for i in range(n_mbs)])
+        dx=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,1]-mb_geo[i,0])/nx1) for i in mb_list])
+        dy=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,3]-mb_geo[i,2])/nx2) for i in mb_list])
+        dz=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,5]-mb_geo[i,4])/nx3) for i in mb_list])
         self.coord['dx'],self.coord['dy'],self.coord['dz']=dx,dy,dz
         return
 
@@ -310,12 +316,12 @@ class AthenaData:
             if (var in self.coord.keys()):
                 if (kwargs.get('dtype')=='uniform'):
                     return self._coord_uniform(var,**kwargs)
-                return self.coord[var]
+                return self.coord[var]#[kwargs.get('mbs')]
             # raw data
             elif (var in self.data_raw.keys()):
                 if (kwargs.get('dtype')=='uniform'):
                     return self._data_raw_uniform(var,**kwargs)
-                return self.data_raw[var]
+                return self.data_raw[var]#[kwargs.get('mbs')]
             # derived data
             elif (var in self.data_func.keys()):
                 data = lambda v:self.data(v,**kwargs)
@@ -325,8 +331,10 @@ class AthenaData:
                 raise ValueError(f"No variable callled '{var}' ")
         elif (type(var) in [list,tuple]):
             return [self.data(v,**kwargs) for v in var]
-        else:
-            raise ValueError(f"var '{var}' not supported")
+        else: 
+            return var # the variable itself, useful to interface with other functions
+        # else:
+        #     raise ValueError(f"var '{var}' not supported")
         
     # an alias for data
     def d(self,var,**kwargs):
@@ -397,10 +405,10 @@ class AthenaData:
         k_max = int(np.ceil((xyz[5]-self.x3min)*nx3_fac))
         data = xp.zeros((k_max-k_min, j_max-j_min, i_max-i_min))
         raw = self.data(var)
-        for nmb in range(self.n_mbs):
+        for nraw,nmb in enumerate(self.mb_list):
             block_level = self.mb_logical[nmb,-1]
             block_loc = self.mb_logical[nmb,:3]
-            block_data = raw[nmb]
+            block_data = raw[nraw]
 
             # Prolongate coarse data and copy same-level data
             if (block_level <= physical_level):
@@ -498,6 +506,7 @@ class AthenaData:
                 ko_s = s if self.Nx3 > 1 else 1
 
                 # Assign values
+                # TODO(@mhguo): arithmetic mean may fail when fine-level is much finer than coarse-level
                 data[kl_d:ku_d,jl_d:ju_d,il_d:iu_d] = block_data[kl_s:ku_s,jl_s:ju_s,il_s:iu_s]\
                     .reshape(ku_d-kl_d,ko_s,ju_d-jl_d,jo_s,iu_d-il_d,io_s)\
                     .mean(axis=(1,3,5))
@@ -511,6 +520,10 @@ class AthenaData:
                                                                 jl_s+jo:ju_s:s,
                                                                 il_s+io:iu_s:s]\
                                                                 /(s**num_extended_dims)
+        # TODO(@mhguo): may change to device-to-device communication in the future
+        if (macros.mpi_enabled):
+            # TODO(@mhguo): assuming the mesh blocks are not overlapped
+            return xp.asarray(mpi.sum(asnumpy(data)))
         return data
 
     def _axis_index(self,axis):
@@ -520,9 +533,17 @@ class AthenaData:
         raise ValueError(f"axis '{axis}' not supported")
 
     # helper functions similar to numpy/cupy
-    def sum(self,var,**kwargs):
-        return asnumpy(xp.sum(self.data(var),**kwargs))
+    def sum(self,var,weights=1.0,where=None,**kwargs):
+        arr = asnumpy(xp.sum((self.data(var)*self.data(weights))[where],**kwargs))
+        # TODO(@mhguo): make a better type conversion
+        #print(var, arr, arr.dtype)
+        arr = np.array(float(arr))
+        if (macros.mpi_enabled):
+            return mpi.sum(arr)
+        return arr
     def average(self,var,weights='ones',where=None,**kwargs):
+        if (macros.mpi_enabled):
+            raise NotImplementedError("average with MPI is not supported yet")
         return asnumpy(xp.average(self.data(var)[where],weights=self.data(weights)[where],**kwargs))
 
     # kernal functions for histograms and profiles
@@ -535,7 +556,9 @@ class AthenaData:
                     if dat.size==0:
                         warnings.warn(f"Warning: no bins for {var}, using linspace(0,1) instead")
                         return xp.linspace(0.0,1.0,bins+1)
-                    return xp.linspace(dat.min(),dat.max(),bins+1)
+                    dmin,dmax = asnumpy(dat.min()),asnumpy(dat.max())
+                    if (macros.mpi_enabled): dmin, dmax = mpi.min(dmin), mpi.max(dmax)
+                    return xp.linspace(float(dmin),float(dmax),bins+1)
                 else:
                     return xp.linspace(range[0],range[1],bins+1)
             elif (scale=='log'):
@@ -547,7 +570,9 @@ class AthenaData:
                         warnings.warn(f"Warning: no bins for {var}, using logspace(0,1) instead")
                         return xp.logspace(0.0,1.0,bins+1)
                     else:
-                        return xp.logspace(xp.log10(dat.min()),xp.log10(dat.max()),bins+1)
+                        dmin,dmax = asnumpy(dat.min()),asnumpy(dat.max())
+                        if (macros.mpi_enabled): dmin, dmax = mpi.min(dmin), mpi.max(dmax)
+                        return xp.logspace(xp.log10(float(dmin)),xp.log10(float(dmax)),bins+1)
                 else:
                     return xp.logspace(xp.log10(range[0]),xp.log10(range[1]),bins+1)
             else:
@@ -596,6 +621,9 @@ class AthenaData:
             hists[histname] = {'dat':xp.asarray(hist[0]),'edges':{v:_ for v,_ in zip(varl,hist[1])}}
             hists[histname]['centers'] = {v:(hists[histname]['edges'][v][:-1]+hists[histname]['edges'][v][1:])/2 for v in varl}
         hists = asnumpy(hists)
+        if (macros.mpi_enabled):
+            for k in hists.keys():
+                hists[k]['dat'] = mpi.sum(hists[k]['dat'])
         return hists
 
     # TODO(@mhguo): add a parameter data_func=self.data
@@ -643,8 +671,15 @@ class AthenaData:
                 data_weights = data(self,var)[where].ravel()
             else:
                 data_weights = data(self,var)[where].ravel()*weights
-            profs[var] = xp.histogramdd(bin_arr,bins=bins,weights=data_weights,**kwargs)[0]/norm[0]
+            profs[var] = xp.histogramdd(bin_arr,bins=bins,weights=data_weights,**kwargs)[0]
         profs = asnumpy(profs)
+        if (macros.mpi_enabled):
+            for k in profs.keys():
+                if (k not in ['edges','centers']):
+                    profs[k] = mpi.sum(np.ascontiguousarray(profs[k]))
+        for k in profs.keys():
+            if (k not in ['edges','centers','norm']):
+                profs[k] = profs[k]/profs['norm']
         return profs
 
     ### get data in a dictionary ###
@@ -1062,9 +1097,9 @@ class AthenaDataSet:
         return
     """
 
-    def load(self,ns,path=None,dtype=None,info=False,**kwargs):
+    def load(self,ns,path=None,dtype=None,verbose=False,**kwargs):
         for n in ns:
-            if(info): print("load:",n)
+            if(verbose): print("load:",n)
             if n not in self.ads.keys():
                 self.ads[n]=AthenaData(num=n,version=self.version)
             self.ads[n].load(path+f".{n:05d}."+dtype,**kwargs)

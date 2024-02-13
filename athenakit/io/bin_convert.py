@@ -87,7 +87,7 @@ The read_*(...) functions return a filedata dictionary-like object with
 import numpy as np
 import struct
 import h5py
-
+from .. import macros
 
 def read_binary(filename):
     """
@@ -186,6 +186,7 @@ def read_binary(filename):
     n_vars = len(var_list)
     mb_count = 0
 
+    mb_list = []
     mb_index = []
     mb_logical = []
     mb_geometry = []
@@ -194,23 +195,52 @@ def read_binary(filename):
     for var in var_list:
         mb_data[var] = []
 
-    while fp.tell() < filesize:
-        mb_index.append(np.array(struct.unpack('@6i', fp.read(24))) - nghost)
-        nx1_out = (mb_index[mb_count][1] - mb_index[mb_count][0])+1
-        nx2_out = (mb_index[mb_count][3] - mb_index[mb_count][2])+1
-        nx3_out = (mb_index[mb_count][5] - mb_index[mb_count][4])+1
+    # assuming all meshblocks are the same size
+    if (macros.mpi_enabled):
+        rank, size = macros.rank, macros.size
+        data_offset = fp.tell()
+        while fp.tell() < filesize:
+            mb_index.append(np.array(struct.unpack('@6i', fp.read(24))) - nghost)
+            mb_logical.append(np.array(struct.unpack('@4i', fp.read(16))))
+            mb_geometry.append(np.array(struct.unpack('=6'+locfmt,
+                                        fp.read(6*locsizebytes))))
+            fp.seek(varsizebytes*nx1*nx2*nx3*n_vars, 1)
+            mb_count += 1
+        my_mb_beg = rank*(mb_count//size) + min(rank, mb_count%size)
+        my_mb_end = my_mb_beg + mb_count//size + (rank < mb_count%size)
+        fp.seek(data_offset+my_mb_beg*(24+16+6*locsizebytes+varsizebytes*nx1*nx2*nx3*n_vars))
+        mb_list = list(range(my_mb_beg,my_mb_end))
+        for mb in mb_list:
+            fp.read(24+16+6*locsizebytes)
+            nx1_out = (mb_index[mb][1] - mb_index[mb][0])+1
+            nx2_out = (mb_index[mb][3] - mb_index[mb][2])+1
+            nx3_out = (mb_index[mb][5] - mb_index[mb][4])+1
 
-        mb_logical.append(np.array(struct.unpack('@4i', fp.read(16))))
-        mb_geometry.append(np.array(struct.unpack('=6'+locfmt,
-                                    fp.read(6*locsizebytes))))
+            data = np.array(struct.unpack(f"={nx1_out*nx2_out*nx3_out*n_vars}" + varfmt,
+                                        fp.read(varsizebytes *
+                                                nx1_out*nx2_out*nx3_out*n_vars)))
+            data = data.reshape(nvars, nx3_out, nx2_out, nx1_out)
+            for vari, var in enumerate(var_list):
+                mb_data[var].append(data[vari])
+    else:
+        while fp.tell() < filesize:
+            mb_index.append(np.array(struct.unpack('@6i', fp.read(24))) - nghost)
+            nx1_out = (mb_index[mb_count][1] - mb_index[mb_count][0])+1
+            nx2_out = (mb_index[mb_count][3] - mb_index[mb_count][2])+1
+            nx3_out = (mb_index[mb_count][5] - mb_index[mb_count][4])+1
 
-        data = np.array(struct.unpack(f"={nx1_out*nx2_out*nx3_out*n_vars}" + varfmt,
-                                      fp.read(varsizebytes *
-                                              nx1_out*nx2_out*nx3_out*n_vars)))
-        data = data.reshape(nvars, nx3_out, nx2_out, nx1_out)
-        for vari, var in enumerate(var_list):
-            mb_data[var].append(data[vari])
-        mb_count += 1
+            mb_logical.append(np.array(struct.unpack('@4i', fp.read(16))))
+            mb_geometry.append(np.array(struct.unpack('=6'+locfmt,
+                                        fp.read(6*locsizebytes))))
+
+            data = np.array(struct.unpack(f"={nx1_out*nx2_out*nx3_out*n_vars}" + varfmt,
+                                        fp.read(varsizebytes *
+                                                nx1_out*nx2_out*nx3_out*n_vars)))
+            data = data.reshape(nvars, nx3_out, nx2_out, nx1_out)
+            for vari, var in enumerate(var_list):
+                mb_data[var].append(data[vari])
+            mb_count += 1
+        mb_list = list(range(mb_count))
 
     fp.close()
 
@@ -239,6 +269,7 @@ def read_binary(filename):
     filedata['nx2_out_mb'] = (mb_index[0][3] - mb_index[0][2])+1
     filedata['nx3_out_mb'] = (mb_index[0][5] - mb_index[0][4])+1
 
+    filedata['mb_list'] = np.array(mb_list)
     filedata['mb_index'] = np.array(mb_index)
     filedata['mb_logical'] = np.array(mb_logical)
     filedata['mb_geometry'] = np.array(mb_geometry)
@@ -269,8 +300,13 @@ def write_athdf(filename, fdata, varsize_bytes=4, locsize_bytes=8):
     locfmt = '<f4' if locsize_bytes == 4 else '<f8'
     varfmt = '<f4' if varsize_bytes == 4 else '<f8'
 
+    # TODO(@mhguo): note MPI is not tested due to lack of parallel-enabled hdf5 library
+    if (macros.mpi_enabled):
+        raise NotImplementedError('MPI is not implemented for write_athdf')
+
     # extract Mesh/MeshBlock parameters
     nmb = fdata['n_mbs']
+    my_nmb = len(fdata['mb_list'])
     Nx1 = fdata['Nx1']  # noqa: F841
     Nx2 = fdata['Nx2']
     Nx3 = fdata['Nx3']
@@ -296,10 +332,10 @@ def write_athdf(filename, fdata, varsize_bytes=4, locsize_bytes=8):
     vars_only_b = [v for v in fdata['var_names'] if v not in vars_without_b]
 
     if len(vars_only_b) > 0:
-        B = np.zeros((3, nmb, nx3_out, nx2_out, nx1_out))
+        B = np.zeros((3, my_nmb, nx3_out, nx2_out, nx1_out))
     Levels = np.zeros(nmb)
     LogicalLocations = np.zeros((nmb, 3))
-    uov = np.zeros((len(vars_without_b), nmb, nx3_out, nx2_out, nx1_out))
+    uov = np.zeros((len(vars_without_b), my_nmb, nx3_out, nx2_out, nx1_out))
     x1f = np.zeros((nmb, nx1_out+1))
     x1v = np.zeros((nmb, nx1_out))
     x2f = np.zeros((nmb, nx2_out+1))
@@ -353,7 +389,10 @@ def write_athdf(filename, fdata, varsize_bytes=4, locsize_bytes=8):
         dataset_nvars.append(len(vars_only_b))
 
     # Set Attributes
-    hfp = h5py.File(filename, 'w')
+    if (macros.mpi_enabled):
+        hfp = h5py.File(filename, 'w', driver='mpio', comm=macros.MPI.COMM_WORLD)
+    else:
+        hfp = h5py.File(filename, 'w')
     hfp.attrs['Header'] = fdata['header']
     hfp.attrs['Time'] = fdata['time']
     hfp.attrs['NumCycles'] = fdata['cycle']
@@ -373,10 +412,18 @@ def write_athdf(filename, fdata, varsize_bytes=4, locsize_bytes=8):
 
     # Create Datasets
     if len(vars_only_b) > 0:
-        hfp.create_dataset('B', data=B, dtype=varfmt)
+        if (macros.mpi_enabled):
+            dset = hfp.create_dataset('B', dtype=varfmt)
+            dset[macros.rank] = B
+        else:
+            hfp.create_dataset('B', data=B, dtype=varfmt)
     hfp.create_dataset('Levels', data=Levels, dtype='>i4')
     hfp.create_dataset('LogicalLocations', data=LogicalLocations, dtype='>i8')
-    hfp.create_dataset('uov', data=uov, dtype=varfmt)
+    if (macros.mpi_enabled):
+        dset = hfp.create_dataset('uov', dtype=varfmt)
+        dset[macros.rank] = uov
+    else:
+        hfp.create_dataset('uov', data=uov, dtype=varfmt)
     hfp.create_dataset('x1f', data=x1f, dtype=locfmt)
     hfp.create_dataset('x1v', data=x1v, dtype=locfmt)
     hfp.create_dataset('x2f', data=x2f, dtype=locfmt)
