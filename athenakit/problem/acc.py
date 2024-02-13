@@ -8,6 +8,7 @@ from numpy.linalg import inv
 from .. import units
 from .. import kit
 from ..athena_data import asnumpy
+from .. import macros, mpi
 
 bhmass_msun = 6.5e9
 mu = 0.618
@@ -152,7 +153,9 @@ class InitialCondition:
 
 def add_tools(ad):
     ad.rin = ad.header('problem','r_in',float)
-    ad.rmin = float(asnumpy(np.min(ad.data('r').min())))
+    ad.rmin = float(asnumpy(ad.data('r').min()))
+    if (macros.mpi_enabled):
+        ad.rmin = float(mpi.min(np.array(ad.rmin)))
     ad.rmax = float(np.min(np.abs([ad.x1min,ad.x1max,ad.x2min,ad.x2max,ad.x3min,ad.x3max])))
             
     mu = ad.header('units','mu',float)
@@ -185,10 +188,11 @@ def add_tools(ad):
 def add_tran(ad):
     where=ad.data('temp')<ad.header('problem','t_cold',float)
     amx, amy, amz = 0.0, 0.0, 1.0
+    # TODO(@mhguo): may break when MPI is used since not all ranks have cold gas
     if (where.any()):
-        amx=ad.average('amx',where=where,weights='mass')
-        amy=ad.average('amy',where=where,weights='mass')
-        amz=ad.average('amz',where=where,weights='mass')
+        amx=ad.sum('amx',where=where,weights='mass')
+        amy=ad.sum('amy',where=where,weights='mass')
+        amz=ad.sum('amz',where=where,weights='mass')
     if (amx==0.0 and amy==0.0 and amz==0.0):
         amx, amy, amz = 0.0, 0.0, 1.0
     def normal(vec):
