@@ -3,6 +3,8 @@ Script for running analysis of athena++ simulation
 
 Example:
     python -u script.py -p ../simulation -t wpv -v simu.hydro_w
+    # for parallel run
+    mpirun -n 2 python -u script.py -p ../simulation -t wpv -v simu.hydro_w
 '''
 
 import os
@@ -12,6 +14,7 @@ import time
 import numpy as np
 try:
     import cupy as xp
+    xp.array(0)
 except ImportError:
     import numpy as xp
 from matplotlib import pyplot as plt
@@ -25,7 +28,7 @@ plt.style.use('~/Git/pykit/pykit/mplstyle/mg')
 
 # TODO(@mhguo): seperate work and plot onto gpu and cpu respectively!
 
-def adwork(ad,zlist=None,bins=256):
+def adwork(ad,zlist=None,dlevel=1,bins=256):
     acc.add_tools(ad)
     acc.add_tran(ad)
     acc.add_data(ad)
@@ -49,7 +52,7 @@ def adwork(ad,zlist=None,bins=256):
     for j in jlist:
         #ad.set_slice(varl=varl,zoom=j,level=j+1)
         zoom=j
-        level=j+1
+        level=j+dlevel
         varl=['dens','temp','velx','vely','bccx','bccy','pres','vtot',]
         ad.set_slice(varl=varl,key=f'z_{j}',level=level,axis='z',
                      xyz=[ad.x1min/2**zoom,ad.x1max/2**zoom,
@@ -66,14 +69,15 @@ def adwork(ad,zlist=None,bins=256):
                           ad.x2min/2**level/ad.Nx2,ad.x2max/2**level/ad.Nx2,
                           ad.x3min/2**zoom,ad.x3max/2**zoom])
         varl=['dens',]
-        data_func = lambda ad,var: ad.data_uniform(var,level,ad.xyz(zoom,level))
-        ad.set_profile2d(['x','y'],varl,key=f'x-y_{j}',weights=None,bins=128,data=data_func,
+        #data_func = lambda ad,var: ad.data_uniform(var,level,ad.xyz(zoom,level))
+        data_func = lambda ad,var: ad.data(var,dtype='uniform',level=level,xyz=ad.xyz(zoom,level))
+        ad.set_profile2d(['x','y'],varl,key=f'x-y_{j}',weights='vol',bins=int(ad.Nx3*2**dlevel),data=data_func,
                  range=[[ad.x1min/2**zoom,ad.x1max/2**zoom],[ad.x2min/2**zoom,ad.x2max/2**zoom]])
-        ad.set_profile2d(['y','z'],varl,key=f'y-z_{j}',weights=None,bins=128,data=data_func,
+        ad.set_profile2d(['y','z'],varl,key=f'y-z_{j}',weights='vol',bins=int(ad.Nx1*2**dlevel),data=data_func,
                  range=[[ad.x2min/2**zoom,ad.x2max/2**zoom],[ad.x3min/2**zoom,ad.x3max/2**zoom]])
-        ad.set_profile2d(['x','z'],varl,key=f'x-z_{j}',weights=None,bins=128,data=data_func,
+        ad.set_profile2d(['x','z'],varl,key=f'x-z_{j}',weights='vol',bins=int(ad.Nx2*2**dlevel),data=data_func,
                  range=[[ad.x1min/2**zoom,ad.x1max/2**zoom],[ad.x3min/2**zoom,ad.x3max/2**zoom]])
-    
+
     print('phase '+str(ad.num))
     varl=['dens','temp','amx','amy','amz','amtot']
     ad.set_hist(varl,weights='vol')
@@ -150,11 +154,11 @@ def adupdate(ad):
                      where=np.logical_and(ad.data('tran_R')<Rmax,np.abs(ad.data('tran_z'))<Rmax))
     return ad
 
-def adplot(ad,zlist=None):
+def adplot(ad,zlist=None,dlevel=1):
     figdir=ad.figpath
     unit=ad.unit
     ran=ad.rad_initial
-    lunit,tunit,munit,vunit=unit.length_cgs/ak.pc_cgs,unit.time_cgs/ak.myr_cgs,unit.mass_cgs/ak.msun_cgs,unit.velocity_cgs/ak.km_s_cgs
+    lunit,tunit,munit,vunit=unit.length_cgs/ak.pc_cgs,unit.time_cgs/ak.kyr_cgs,unit.mass_cgs/ak.msun_cgs,unit.velocity_cgs/ak.km_s_cgs
     lunit=1.0 # for GR
     Tunit,mdot_unit,magnetic_unit=unit.temperature_cgs,unit.mdot_msun_yr,unit.magnetic_field_cgs/1e-6
     #'''
@@ -167,13 +171,13 @@ def adplot(ad,zlist=None):
     jlist=[0]+list(range(max_level-8,max_level+1,2))
     if (zlist is not None): jlist=[int(z) for z in zlist]
     fig,axes=ak.subplots(4,6,figsize=(16,10),dpi=128,wspace=0.3,hspace=0.25,bottom=0.08,top=0.92,left=0.05,right=0.95,raw=True)
-    fig.suptitle(fr'Time={ad.time*tunit:.2f} Myr (Black lines: $v$, Grey lines: $B$)')
+    fig.suptitle(fr'Time={ad.time*tunit:.2f} kyr (Black lines: $v$, Grey lines: $B$)')
     for i,j in enumerate(jlist):#
         zoom=j
         vec=None
         xyz=None
         stream=True
-        level=j+1
+        level=j+dlevel
         xyunit=lunit
         prof=ad.profs[f'y-z_{j}']
         x,y=prof['edges'].values()
@@ -187,7 +191,7 @@ def adplot(ad,zlist=None):
             title=None,aspect='equal',yticklabels=[])
         ad.plot_slice(fig=fig,ax=axes[2,i],var='temp',  key=f'x_{j}',axis='x',save=False,label=r'$T\rm\,[K]$' if (j==jlist[-1]) else None,
             cmap='RdYlBu_r',xlabel=' ',ylabel='Z [M]' if (i==0) else ' ',  zoom=zoom,vec=vec,stream=stream,level=level,
-            xyz=xyz,vecx='bccy',vecy='bccz',unit=Tunit,xyunit=xyunit,dpi=128,norm='log',vmin=5e4,vmax=5e9,stream_para=dict(color='grey',),
+            xyz=xyz,vecx='bccy',vecy='bccz',unit=Tunit,xyunit=xyunit,dpi=128,norm='log',vmin=5e4,vmax=3e10,stream_para=dict(color='grey',),
             title=None,aspect='equal',yticklabels=[])
         ad.plot_slice(fig=fig,ax=axes[3,i],var='vtot',key=f'x_{j}',axis='x',save=False,label=r'$|v|\rm\,[km\,s^{-1}]$' if (j==jlist[-1]) else None, 
             cmap='plasma',xlabel='Y [M]',ylabel='Z [M]' if (i==0) else ' ',zoom=zoom,vec=vec,level=level,
@@ -205,13 +209,13 @@ def adplot(ad,zlist=None):
 
     #'''
     fig,axes=ak.subplots(4,6,figsize=(16,10),dpi=128,wspace=0.3,hspace=0.25,bottom=0.08,top=0.92,left=0.05,right=0.95,raw=True)
-    fig.suptitle(fr'Time={ad.time*tunit:.2f} Myr (Black lines: $v$, Grey lines: $B$)')
+    fig.suptitle(fr'Time={ad.time*tunit:.2f} kyr (Black lines: $v$, Grey lines: $B$)')
     for i,j in enumerate(jlist):#
         zoom=j
         vec=None
         xyz=None
         stream=True
-        level=j+1
+        level=j+dlevel
         xyunit=lunit
         prof=ad.profs[f'x-z_{j}']
         x,y=prof['edges'].values()
@@ -225,7 +229,7 @@ def adplot(ad,zlist=None):
             title=None,aspect='equal',yticklabels=[])
         ad.plot_slice(fig=fig,ax=axes[2,i],var='temp',  key=f'y_{j}',axis='y',save=False,label=r'$T\rm\,[K]$' if (j==jlist[-1]) else None,
             cmap='RdYlBu_r',xlabel=' ',ylabel='Z [M]' if (i==0) else ' ',  zoom=zoom,vec=vec,stream=stream,level=level,stream_para=dict(color='grey',),
-            xyz=xyz,vecx='bccx',vecy='bccz',unit=Tunit,xyunit=xyunit,dpi=128,norm='log',vmin=5e4,vmax=5e9,
+            xyz=xyz,vecx='bccx',vecy='bccz',unit=Tunit,xyunit=xyunit,dpi=128,norm='log',vmin=5e4,vmax=3e10,
             title=None,aspect='equal',yticklabels=[])
         ad.plot_slice(fig=fig,ax=axes[3,i],var='vtot',key=f'y_{j}',axis='y',save=False,label=r'$|v|\rm\,[km\,s^{-1}]$' if (j==jlist[-1]) else None, 
             cmap='plasma',xlabel='X [M]',ylabel='Z [M]' if (i==0) else ' ',zoom=zoom,vec=vec,level=level,
@@ -243,13 +247,13 @@ def adplot(ad,zlist=None):
 
     #'''
     fig,axes=ak.subplots(4,6,figsize=(16,10),dpi=128,wspace=0.3,hspace=0.25,bottom=0.08,top=0.92,left=0.05,right=0.95,raw=True)
-    fig.suptitle(fr'Time={ad.time*tunit:.2f} Myr (Black lines: $v$, Grey lines: $B$)')
+    fig.suptitle(fr'Time={ad.time*tunit:.2f} kyr (Black lines: $v$, Grey lines: $B$)')
     for i,j in enumerate(jlist):#
         zoom=j
         vec=None
         xyz=None
         stream=True
-        level=j+1
+        level=j+dlevel
         xyunit=lunit
         prof=ad.profs[f'x-y_{j}']
         x,y=prof['edges'].values()
@@ -263,7 +267,7 @@ def adplot(ad,zlist=None):
             title=None,aspect='equal',yticklabels=[])
         ad.plot_slice(fig=fig,ax=axes[2,i],var='temp',  key=f'z_{j}',axis='z',save=False,label=r'$T\rm\,[K]$' if (j==jlist[-1]) else None,
             cmap='RdYlBu_r',xlabel=' ',ylabel='Y [M]' if (i==0) else ' ',  zoom=zoom,vec=vec,stream=stream,level=level,stream_para=dict(color='grey',),
-            xyz=xyz,vecx='bccx',vecy='bccy',unit=Tunit,xyunit=xyunit,dpi=128,norm='log',vmin=5e4,vmax=5e9,
+            xyz=xyz,vecx='bccx',vecy='bccy',unit=Tunit,xyunit=xyunit,dpi=128,norm='log',vmin=5e4,vmax=3e10,
             title=None,aspect='equal',yticklabels=[])
         ad.plot_slice(fig=fig,ax=axes[3,i],var='vtot',key=f'z_{j}',axis='z',save=False,label=r'$|v|\rm\,[km\,s^{-1}]$' if (j==jlist[-1]) else None, 
             cmap='plasma',xlabel='X [M]',ylabel='Y [M]' if (i==0) else ' ',zoom=zoom,vec=vec,level=level,
@@ -282,43 +286,43 @@ def adplot(ad,zlist=None):
     #'''
     print('phase '+str(ad.num))
     fig,axes=ak.subplots(2,4,figsize=(16,8),dpi=128,wspace=0.5,top=0.88,hspace=0.4,left=0.05,right=0.95,raw=True)
-    fig.suptitle(f'Time={ad.time*tunit} Myr')
+    fig.suptitle(f'Time={ad.time*tunit} kyr')
     savelabel=f'phase_0'
     vmin, vmax = 1e0,1e12
     locs=np.where((ran['r']-ad.rin)*(ran['r']-ad.rmax)<=0)
     key,weights='mass','mass'
     cmap='Spectral_r'
 
-    fig=ad.plot_phase(fig=fig,ax=axes[0,0],key=key,varname='dens-temp',weights=weights,xlabel=r'$n\rm\,[cm^{-3}]$',ylabel=r'$T\,\rm [K]$',label=r'$M\rm\,[M_\odot]$',
+    fig=ad.plot_phase(fig=fig,ax=axes[0,0],key=key,varname='dens,temp',weights=weights,xlabel=r'$n\rm\,[cm^{-3}]$',ylabel=r'$T\,\rm [K]$',label=r'$M\rm\,[M_\odot]$',
                       title=None,unit=munit,density=True,yunit=unit.temperature_cgs,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
 
-    fig=ad.plot_phase(fig=fig,ax=axes[0,1],key=key,varname='r-dens',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$n\,\rm [cm^{-3}]$',label=r'$M\rm\,[M_\odot]$',
+    fig=ad.plot_phase(fig=fig,ax=axes[0,1],key=key,varname='r,dens',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$n\,\rm [cm^{-3}]$',label=r'$M\rm\,[M_\odot]$',
                       title=None,unit=munit,density=True,xunit=lunit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
     axes[0,1].plot(ran['r'][locs]*lunit,ran['dens'][locs],':',label=r'$n$',color='k')
     
-    fig=ad.plot_phase(fig=fig,ax=axes[1,0],key=key,varname='r-temp',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$T\,\rm [K]$',label=r'$M\rm\,[M_\odot]$',
+    fig=ad.plot_phase(fig=fig,ax=axes[1,0],key=key,varname='r,temp',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$T\,\rm [K]$',label=r'$M\rm\,[M_\odot]$',
                       title=None,unit=munit,density=True,xunit=lunit,yunit=unit.temperature_cgs,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
     axes[1,0].plot(ran['r'][locs]*lunit,ran['temp'][locs]*Tunit,':',label=r'$T$',color='k')
 
-    fig=ad.plot_phase(fig=fig,ax=axes[1,1],key=key,varname='r-amtot',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$L$',label=r'$M\rm\,[M_\odot]$',
+    fig=ad.plot_phase(fig=fig,ax=axes[1,1],key=key,varname='r,amtot',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$L$',label=r'$M\rm\,[M_\odot]$',
                       title=None,unit=munit,density=True,xunit=lunit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
     axes[1,1].plot(ran['r'][locs]*lunit,ran['am_kep'][locs],':',label=r'$L_{\rm Kep}$',color='k')
 
-    fig=ad.plot_phase(fig=fig,ax=axes[0,2],key=key,varname='r-vtot',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$v\rm\,[km\,s^{-1}]$',label=r'$M\rm\,[M_\odot]$',
+    fig=ad.plot_phase(fig=fig,ax=axes[0,2],key=key,varname='r,vtot',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$v\rm\,[km\,s^{-1}]$',label=r'$M\rm\,[M_\odot]$',
                       title=None,unit=munit,density=True,xunit=lunit,yunit=vunit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
     axes[0,2].plot(ran['r'][locs]*lunit,ran['v_kep'][locs]*vunit,':',label=r'$v_{\rm Kep}$',color='k')
 
-    fig=ad.plot_phase(fig=fig,ax=axes[0,3],key=key,varname='r-v_A',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$v_A\rm\,[km\,s^{-1}]$',label=r'$M\rm\,[M_\odot]$',
+    fig=ad.plot_phase(fig=fig,ax=axes[0,3],key=key,varname='r,v_A',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$v_A\rm\,[km\,s^{-1}]$',label=r'$M\rm\,[M_\odot]$',
                       title=None,unit=munit,density=True,xunit=lunit,yunit=vunit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
     axes[0,3].plot(ran['r'][locs]*lunit,ran['v_kep'][locs]*vunit,':',label=r'$v_{\rm Kep}$',color='k')
 
-    fig=ad.plot_phase(fig=fig,ax=axes[1,2],key=key,varname='r-btot',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$|B|\rm\,[\mu G]$',label=r'$M\rm\,[M_\odot]$',
+    fig=ad.plot_phase(fig=fig,ax=axes[1,2],key=key,varname='r,btot',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$|B|\rm\,[\mu G]$',label=r'$M\rm\,[M_\odot]$',
                       title=None,unit=munit,density=True,xunit=lunit,yunit=magnetic_unit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
 
-    fig=ad.plot_phase(fig=fig,ax=axes[1,3],key=key,varname='r-beta',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$\beta$',label=r'$M\rm\,[M_\odot]$',
+    fig=ad.plot_phase(fig=fig,ax=axes[1,3],key=key,varname='r,beta',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$\beta$',label=r'$M\rm\,[M_\odot]$',
                       title=None,unit=munit,density=True,xunit=lunit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
 
-    fig.suptitle(fr'Time={ad.time*tunit:.2f} Myr (Dashed lines: virial equilibrium)')
+    fig.suptitle(fr'Time={ad.time*tunit:.2f} kyr (Dashed lines: virial equilibrium)')
     fig.savefig(f"{figdir}/fig_{savelabel}_{ad.num:04d}.png")#,bbox_inches='tight'
     plt.close(fig)
     #'''
@@ -327,7 +331,7 @@ def adplot(ad,zlist=None):
     print('radial '+str(ad.num))
     #fig,axes=ak.subplots(2,2,figsize=(8,6),dpi=200,wspace=0.3,top=0.92,hspace=0.1,sharex=False,raw=True)
     fig,axes = ak.subplots(2,3,figsize=(12,6),dpi=128,top=0.92,wspace=0.25,left=0.05,right=0.95,raw=True)
-    fig.suptitle(f'Time={ad.time*tunit:.2f} Myr')
+    fig.suptitle(f'Time={ad.time*tunit:.2f} kyr')
     savelabel=f'radial_0'
 
     colors=['k','#3369E8','#009925','#FBBC05','#EA4335',]
@@ -350,15 +354,15 @@ def adplot(ad,zlist=None):
         axes[0,1].plot(r*lunit,-r/rad_v['velin']/rad['t_ff'],marker='',color=colors[cn],label=(r'$t_{\rm inflow}/t_{\rm ff}$' if (i==3) else None))
         axes[0,1].plot(r*lunit,rad_m['tcool']/rad['t_ff'],linestyle='--',marker='',color=colors[cn],label=(r'$t_{\rm cool}/t_{\rm ff}$' if (i==3) else None))
         axes[0,2].plot(r*lunit,rad_v['pres']/rad_v['btot^2']*2,color=colors[cn],label=label)
-        axes[1,2].plot(r*lunit,rad_v['amx'],color=colors[cn],label=label)
-        axes[1,2].plot(r*lunit,rad_v['amy'],color=colors[cn],label=label,alpha=0.5)
-        axes[1,2].plot(r*lunit,rad_v['amz'],color=colors[cn],label=label,alpha=0.3)
+        axes[1,2].plot(r*lunit,rad_v['amx'],color=colors[cn],label=label,alpha=0.3)
+        axes[1,2].plot(r*lunit,rad_v['amy'],color=colors[cn],label=label,alpha=0.7)
+        axes[1,2].plot(r*lunit,rad_v['amz'],color=colors[cn],label=label)
         for j,var,ls,sign,label in zip([0,1,2],['mdotin','mdotout','mdot'],['--',':','-'],[-1,1,-1],[r'$\dot{M}_{\rm inflow}$',r'$\dot{M}_{\rm outflow}$',r'$\dot{M}_{\rm net}$']):
             axes[1,1].plot(r*lunit,sign*rad[var+suf]*mdot_unit,linestyle=ls,color=colors[cn],label=label if i==3 else None)
 
     axes[0,0].set_ylim(5e-3)
     axes[0,1].set_ylim(1e-4,3e3)
-    axes[1,0].set_ylim(1e5)
+    axes[1,0].set_ylim(2e4)
     axes[1,1].set_ylim(1e-4,3e2)
     axes[-1,0].set_xlabel(r'$r\rm\,[M]$')
     axes[-1,1].set_xlabel(r'$r\rm\,[M]$')
@@ -399,6 +403,7 @@ def make_video(figlabel='',videolabel=None,figdir='',videodir=None,duration=0.05
     concat_clip.write_videofile(f"{videodir}/{videolabel}.mp4",fps=fps)
 
 if __name__ == "__main__":
+    tic=time.time()
     parser = argparse.ArgumentParser(description='manual to this script')
     parser.add_argument('-p', '--path', type=str, default = '../simu')
     parser.add_argument('-d', '--data', type=str, default = 'data')
@@ -409,12 +414,14 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default = 0)
     parser.add_argument('-v', '--variables', nargs='+', help='<Required> Set flag', default=['mhd_w_bcc','mhd_divb'])
     parser.add_argument('-z', '--zooms', nargs='+', help='<Required> Set flag', default=[])
+    parser.add_argument('-l', '--level', type=int, default = 1)
     parser.add_argument('-n', '--nprocess', type=int, default = 0)
     args = parser.parse_args()
     data_path=args.path+'/'+args.data+'/'
     task=args.task
     variables=args.variables
     zooms=args.zooms if (len(args.zooms)>0) else None
+    dlevel=args.level
     print(variables)
     # get path
     binpath=data_path+'bin/'
@@ -422,9 +429,10 @@ if __name__ == "__main__":
     pklpath=data_path+'pkl/'
     figpath=data_path+'fig/'
     videopath=data_path+'video/'
-    for path in [athdfpath,pklpath,figpath]:
-        if not os.path.isdir(path):
-            os.mkdir(path)
+    if (ak.macros.rank==0):
+        for path in [athdfpath,pklpath,figpath]:
+            if not os.path.isdir(path):
+                os.mkdir(path)
     # get numlist
     numlist=[]
     binfiles = [binpath+f for f in os.listdir(binpath) if f.endswith('.bin')]
@@ -440,33 +448,33 @@ if __name__ == "__main__":
     print('Work for', data_path, numlist)
     # run
     def run(i):
-        for variable in variables:
-            filename=athdfpath+f'{variable}.{i:05d}.athdf'
-            binfilename=binpath+f'{variable}.{i:05d}.bin'
-            if os.path.isfile(binfilename):
-                if ((not os.path.isfile(filename)) \
-                or (os.path.getmtime(binfilename)>os.path.getmtime(filename))):
-                    ak.bin_to_athdf(binpath+f'{variable}.{i:05d}.bin',filename)
-                    print(f'bin_to_athdf {filename}')
+        # for variable in variables:
+        #     filename=athdfpath+f'{variable}.{i:05d}.athdf'
+        #     binfilename=binpath+f'{variable}.{i:05d}.bin'
+        #     if os.path.isfile(binfilename):
+        #         if ((not os.path.isfile(filename)) \
+        #         or (os.path.getmtime(binfilename)>os.path.getmtime(filename))):
+        #             ak.bin_to_athdf(binpath+f'{variable}.{i:05d}.bin',filename)
+        #             print(f'bin_to_athdf {filename}')
         ad=ak.AthenaData()
         #try:
         variable=variables[0]
         if True:
             print(f'running i={i}')
             if ('w' in task):
-                print(f'loading athdf i={i}')
-                filename=athdfpath+f'/{variable}.{i:05d}.athdf'
+                print(f'loading binary i={i}')
+                filename=binpath+f'{variable}.{i:05d}.bin'
                 ad.load(filename)
                 print(f'working i={i}')
-                adwork(ad,zooms).save(pklpath+f'/Base.{ad.num:05d}.pkl')
+                adwork(ad,zooms,dlevel).save(pklpath+f'/Base.{ad.num:05d}.pkl')
                 #adwork(ad).save(ad.path.replace('athdf','h5')+f'/Base.{ad.num:05d}.h5')
-            if ('p' in task):
+            if ('p' in task and ak.macros.rank==0):
                 print(f'loading pkl i={i}')
                 filename=pklpath+f'/Base.{i:05d}.pkl'
                 ad.load(filename)
                 ad.figpath=figpath
                 print(f'plotting i={i}')
-                adplot(ad,zooms)
+                adplot(ad,zooms,dlevel)
             if ('u' in task):
                 print(f'loading athdf i={i}')
                 filename=athdfpath+f'/{variable}.{i:05d}.athdf'
@@ -482,14 +490,13 @@ if __name__ == "__main__":
         #xp._default_memory_pool.free_all_blocks()
         return
 
-    tic=time.time()
     print("mp.cpu_count:",mp.cpu_count())
     if ('w' in task or 'u' in task or 'p' in task):
         if args.nprocess<=1:
             for n in numlist:run(n)
         else:
             with mp.Pool(args.nprocess) as p:p.map(run,numlist)
-    if ('f' in task):
+    if ('f' in task and ak.macros.rank==0):
         numlist=[]
         for file in sorted(os.listdir(pklpath)):
             if file.endswith('.pkl'):
@@ -505,12 +512,12 @@ if __name__ == "__main__":
             ad.load(pklpath+f'/Base.{i:05d}.pkl')
             ad.figpath=figpath
             print(f'plotting i={i}')
-            adplot(ad,zooms)
+            adplot(ad,zooms,dlevel)
         if (args.nprocess<=1):
             for i in numlist: plot(i)
         else:
             with mp.Pool(args.nprocess) as p:p.map(plot,numlist)
-    if ('v' in task):
+    if ('v' in task and ak.macros.rank==0):
         for label in ['image_x','image_y','image_z','phase_0','radial_0',]:
             make_video(figlabel='fig_'+label,videolabel='video_'+label,figdir=figpath,videodir=videopath,duration=0.05,fps=20)
     '''
