@@ -523,7 +523,7 @@ class AthenaData:
         # TODO(@mhguo): may change to device-to-device communication in the future
         if (macros.mpi_enabled):
             # TODO(@mhguo): assuming the mesh blocks are not overlapped
-            return xp.asarray(mpi.sum(asnumpy(data)))
+            return xp.asarray(mpi.sum(np.ascontiguousarray(asnumpy(data))))
         return data
 
     def _axis_index(self,axis):
@@ -539,7 +539,7 @@ class AthenaData:
         #print(var, arr, arr.dtype)
         arr = np.array(float(arr))
         if (macros.mpi_enabled):
-            return mpi.sum(arr)
+            return mpi.sum(np.ascontiguousarray(arr))
         return arr
     def average(self,var,weights='ones',where=None,**kwargs):
         if (macros.mpi_enabled):
@@ -623,7 +623,7 @@ class AthenaData:
         hists = asnumpy(hists)
         if (macros.mpi_enabled):
             for k in hists.keys():
-                hists[k]['dat'] = mpi.sum(hists[k]['dat'])
+                hists[k]['dat'] = mpi.sum(np.ascontiguousarray(hists[k]['dat']))
         return hists
 
     # TODO(@mhguo): add a parameter data_func=self.data
@@ -674,12 +674,10 @@ class AthenaData:
             profs[var] = xp.histogramdd(bin_arr,bins=bins,weights=data_weights,**kwargs)[0]
         profs = asnumpy(profs)
         if (macros.mpi_enabled):
-            for k in profs.keys():
-                if (k not in ['edges','centers']):
-                    profs[k] = mpi.sum(np.ascontiguousarray(profs[k]))
-        for k in profs.keys():
-            if (k not in ['edges','centers','norm']):
-                profs[k] = profs[k]/profs['norm']
+            for k in varl+['norm',]:
+                profs[k] = mpi.sum(np.ascontiguousarray(profs[k]))
+        for k in varl:
+            profs[k] = profs[k]/profs['norm']
         return profs
 
     ### get data in a dictionary ###
