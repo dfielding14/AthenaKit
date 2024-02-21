@@ -433,6 +433,8 @@ if __name__ == "__main__":
         for path in [athdfpath,pklpath,figpath]:
             if not os.path.isdir(path):
                 os.mkdir(path)
+    if (ak.macros.mpi_enabled):
+        ak.mpi.MPI.COMM_WORLD.Barrier()
     # get numlist
     numlist=[]
     binfiles = [binpath+f for f in os.listdir(binpath) if f.endswith('.bin')]
@@ -448,19 +450,20 @@ if __name__ == "__main__":
     print('Work for', data_path, numlist)
     # run
     def run(i):
-        # for variable in variables:
-        #     filename=athdfpath+f'{variable}.{i:05d}.athdf'
-        #     binfilename=binpath+f'{variable}.{i:05d}.bin'
-        #     if os.path.isfile(binfilename):
-        #         if ((not os.path.isfile(filename)) \
-        #         or (os.path.getmtime(binfilename)>os.path.getmtime(filename))):
-        #             ak.bin_to_athdf(binpath+f'{variable}.{i:05d}.bin',filename)
-        #             print(f'bin_to_athdf {filename}')
         ad=ak.AthenaData()
         #try:
         variable=variables[0]
         if True:
             print(f'running i={i}')
+            if ('c' in task):
+                for variable in variables:
+                    filename=athdfpath+f'{variable}.{i:05d}.athdf'
+                    binfilename=binpath+f'{variable}.{i:05d}.bin'
+                    if os.path.isfile(binfilename):
+                        if ((not os.path.isfile(filename)) \
+                        or (os.path.getmtime(binfilename)>os.path.getmtime(filename))):
+                            ak.bin_to_athdf(binpath+f'{variable}.{i:05d}.bin',filename)
+                            print(f'convert {binfilename} to {filename}')
             if ('w' in task):
                 print(f'loading binary i={i}')
                 filename=binpath+f'{variable}.{i:05d}.bin'
@@ -491,7 +494,7 @@ if __name__ == "__main__":
         return
 
     print("mp.cpu_count:",mp.cpu_count())
-    if ('w' in task or 'u' in task or 'p' in task):
+    if ('w' in task or 'u' in task or 'p' in task or 'c' in task):
         if args.nprocess<=1:
             for n in numlist:run(n)
         else:

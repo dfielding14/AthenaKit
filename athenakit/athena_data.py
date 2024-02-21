@@ -326,19 +326,44 @@ class AthenaData:
             elif (var in self.data_func.keys()):
                 data = lambda v:self.data(v,**kwargs)
                 data.ad = self
+                data.kwargs = kwargs
                 return self.data_func[var](data)
             else:
-                raise ValueError(f"No variable callled '{var}' ")
+                # evaluate math expression in the string
+                # TODO(@mhguo): this is a very naive implementation, make it more robust
+                def numeric(expr):
+                    if ('+' in expr):
+                        return xp.sum(xp.asarray([numeric(e) for e in expr.split('+')]),axis=0)
+                    if ('-' in expr):
+                        return numeric(expr.split('-')[0])-numeric(expr.split('-')[1])
+                    if ('*' in expr):
+                        return xp.prod(xp.asarray([numeric(e) for e in expr.split('*')]),axis=0)
+                    if ('/' in expr):
+                        return numeric(expr.split('/')[0])/numeric(expr.split('/')[1])
+                    if ('^' in expr):
+                        return numeric(expr.split('^')[0])**numeric(expr.split('^')[1])
+                    if (expr in self.data_list):
+                        return self.data(expr,**kwargs)
+                    return float(expr)
+                return numeric(var)
+            #raise ValueError(f"No variable callled '{var}' ")
         elif (type(var) in [list,tuple]):
             return [self.data(v,**kwargs) for v in var]
         else: 
             return var # the variable itself, useful to interface with other functions
         # else:
         #     raise ValueError(f"var '{var}' not supported")
-        
+
     # an alias for data
     def d(self,var,**kwargs):
         return self.data(var,**kwargs)
+
+    @property
+    def mb_dx(self):
+        mb_geo = self.mb_geometry
+        return np.asarray([(mb_geo[:,1]-mb_geo[:,0])/self.nx1,
+                           (mb_geo[:,3]-mb_geo[:,2])/self.nx2,
+                           (mb_geo[:,5]-mb_geo[:,4])/self.nx3]).T
 
     ### get data in a single array ###
     def _cell_info(self,level=0,xyz=[]):
@@ -349,11 +374,11 @@ class AthenaData:
         nx2_fac = 2**level*self.Nx2/(self.x2max-self.x2min)
         nx3_fac = 2**level*self.Nx3/(self.x3max-self.x3min)
         i_min = int((xyz[0]-self.x1min)*nx1_fac)
-        i_max = int((xyz[1]-self.x1min)*nx1_fac)
+        i_max = int(np.ceil((xyz[1]-self.x1min)*nx1_fac))
         j_min = int((xyz[2]-self.x2min)*nx2_fac)
-        j_max = int((xyz[3]-self.x2min)*nx2_fac)
+        j_max = int(np.ceil((xyz[3]-self.x2min)*nx2_fac))
         k_min = int((xyz[4]-self.x3min)*nx3_fac)
-        k_max = int((xyz[5]-self.x3min)*nx3_fac)
+        k_max = int(np.ceil((xyz[5]-self.x3min)*nx3_fac))
         dx = (xyz[1]-xyz[0])/(i_max-i_min)
         dy = (xyz[3]-xyz[2])/(j_max-j_min)
         dz = (xyz[5]-xyz[4])/(k_max-k_min)
@@ -527,9 +552,11 @@ class AthenaData:
         return data
 
     def _axis_index(self,axis):
-        if (axis=='z'): return 0
-        if (axis=='y'): return 1
-        if (axis=='x'): return 2
+        if (axis is None): return None
+        if (type(axis) is int): return axis
+        if (axis=='z'): return -3
+        if (axis=='y'): return -2
+        if (axis=='x'): return -1
         raise ValueError(f"axis '{axis}' not supported")
 
     # helper functions similar to numpy/cupy
@@ -537,14 +564,40 @@ class AthenaData:
         arr = asnumpy(xp.sum((self.data(var)*self.data(weights))[where],**kwargs))
         # TODO(@mhguo): make a better type conversion
         #print(var, arr, arr.dtype)
-        arr = np.array(float(arr))
         if (macros.mpi_enabled):
-            return mpi.sum(np.ascontiguousarray(arr))
+            arr = np.array(float(arr))
+            arr = mpi.sum(np.ascontiguousarray(arr))
+            arr = float(arr)
         return arr
     def average(self,var,weights='ones',where=None,**kwargs):
         if (macros.mpi_enabled):
             raise NotImplementedError("average with MPI is not supported yet")
         return asnumpy(xp.average(self.data(var)[where],weights=self.data(weights)[where],**kwargs))
+
+    # def derivative(self,f,x,axis=None,edge_order=1,**kwargs):
+    #     f = self.data(f) if (type(f) is str) else f
+    #     x = self.data(x) if (type(x) is str) else x
+    #     axis = self._axis_index(axis)
+    #     return xp.gradient(f,x,axis=axis,edge_order=edge_order,**kwargs)
+
+    def gradient(self,f,axis=None,edge_order=1,**kwargs):
+        f = self.data(f,**kwargs)
+        axis = self._axis_index(axis)
+        mb_dx, mb_list = self.mb_dx[:,::-1], self.mb_list
+        if (kwargs.get('dtype')=='uniform'):
+            dx = self._cell_length(kwargs.get('level',0),kwargs.get('xyz',[]))[::-1]
+            if (axis is None):
+                return xp.asarray(xp.gradient(f,*dx,edge_order=edge_order))
+            else:
+                return xp.gradient(f,dx[axis],axis=axis,edge_order=edge_order)
+        if (axis is None):
+            return xp.asarray([xp.gradient(d,*dx,edge_order=edge_order) for d,dx in zip(f,mb_dx[mb_list])]).swapaxes(0,1)
+        else:
+            return xp.asarray([xp.gradient(d,dx[axis],axis=axis,edge_order=edge_order) for d,dx in zip(f,mb_dx[mb_list])])
+        
+    def divergence(self,fx,fy,fz,**kwargs):
+        fx,fy,fz = self.data(fx,**kwargs),self.data(fy,**kwargs),self.data(fz,**kwargs)
+        return self.gradient(fx,'x',**kwargs)+self.gradient(fy,'y',**kwargs)+self.gradient(fz,'z',**kwargs)
 
     # kernal functions for histograms and profiles
     def _set_bins(self,var,bins,range,scale,where):
