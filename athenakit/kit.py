@@ -201,9 +201,21 @@ def rho_T_t_cool(cooling_rho=np.logspace(-4,4,400),cooling_temp=np.logspace(0,8,
 ##########################################################################################
 ## Some useful functions
 ##########################################################################################
+def ave(a,n):
+    end = -(a.size%n) if(-(a.size%n)) else None
+    return np.average((a.ravel()[:end]).reshape(-1,n),axis=1)
 def smooth(x,s=3,mode='nearest',**kwargs):
     from scipy.ndimage import gaussian_filter
     return gaussian_filter(x,s,mode=mode,**kwargs)
+# quantile with weights
+def quantile(x,q,weights=None,axis=None):
+    if (weights is None):
+        return np.quantile(x,q)
+    else:
+        if (axis is None):
+            return np.interp(q,np.cumsum(weights)/np.sum(weights),x)
+        else:
+            return np.apply_along_axis(lambda a: np.interp(q,np.cumsum(a)/np.sum(a),x),axis,weights)
 
 ##########################################################################################
 ## Scipy Measurements Label with boundary correction
@@ -360,12 +372,7 @@ def connect_faces_rank(lf1,lf2):
     return set(tuples)
 
 connect_faces = connect_faces_rank
-##########################################################################################
-## plots
-##########################################################################################
-def ave(a,n):
-    end = -(a.size%n) if(-(a.size%n)) else None
-    return np.average((a.ravel()[:end]).reshape(-1,n),axis=1)
+
 ##########################################################################################
 ## plots
 ##########################################################################################

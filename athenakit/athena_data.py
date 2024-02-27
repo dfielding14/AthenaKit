@@ -332,16 +332,16 @@ class AthenaData:
                 # evaluate math expression in the string
                 # TODO(@mhguo): this is a very naive implementation, make it more robust
                 def numeric(expr):
-                    if ('+' in expr):
-                        return xp.sum(xp.asarray([numeric(e) for e in expr.split('+')]),axis=0)
                     if ('-' in expr):
-                        return numeric(expr.split('-')[0])-numeric(expr.split('-')[1])
-                    if ('*' in expr):
-                        return xp.prod(xp.asarray([numeric(e) for e in expr.split('*')]),axis=0)
+                        return numeric(expr.rpartition('-')[0] if (expr.rpartition('-')[0]!='') else '0')-numeric(expr.rpartition('-')[2])
+                    if ('+' in expr):
+                        return numeric(expr.rpartition('+')[0] if (expr.rpartition('+')[0]!='') else '0')+numeric(expr.rpartition('+')[2])
                     if ('/' in expr):
-                        return numeric(expr.split('/')[0])/numeric(expr.split('/')[1])
+                        return numeric(expr.rpartition('/')[0])/numeric(expr.rpartition('/')[2])
+                    if ('*' in expr):
+                        return numeric(expr.rpartition('*')[0])*numeric(expr.rpartition('*')[2])
                     if ('^' in expr):
-                        return numeric(expr.split('^')[0])**numeric(expr.split('^')[1])
+                        return numeric(expr.rpartition('^')[0])**numeric(expr.rpartition('^')[2])
                     if (expr in self.data_list):
                         return self.data(expr,**kwargs)
                     return float(expr)
@@ -663,12 +663,13 @@ class AthenaData:
             arr = [self.data(v)[where].ravel() for v in varl]
             histname = ','.join(varl)
             # get bins
-            bins = [bins_0]*len(varl)
+            if (type(bins_0) is int):
+                bins = [bins_0]*len(varl)
             scale = [scale]*len(varl) if (type(scale) is str) else scale
             range = [range_0]*len(varl) if (range_0 is None) else range_0
             for i,v in enumerate(varl):
                 bins[i] = self._set_bins(v,bins[i],range[i],scale[i],where)
-            bins = xp.asarray(bins)
+            # bins = xp.asarray(bins)
             # get histogram
             hist = xp.histogramdd(arr,bins=bins,weights=weights,**kwargs)
             hists[histname] = {'dat':xp.asarray(hist[0]),'edges':{v:_ for v,_ in zip(varl,hist[1])}}

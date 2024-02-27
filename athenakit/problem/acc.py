@@ -8,7 +8,6 @@ from numpy.linalg import inv
 from .. import units
 from .. import kit
 from ..athena_data import asnumpy
-from .. import macros, mpi
 
 bhmass_msun = 6.5e9
 mu = 0.618
@@ -153,9 +152,7 @@ class InitialCondition:
 
 def add_tools(ad):
     ad.rin = ad.header('problem','r_in',float)
-    ad.rmin = float(asnumpy(ad.data('r').min()))
-    if (macros.mpi_enabled):
-        ad.rmin = float(mpi.min(np.array(ad.rmin)))
+    ad.rmin = ad.mb_dx.min()
     ad.rmax = float(np.min(np.abs([ad.x1min,ad.x1max,ad.x2min,ad.x2max,ad.x3min,ad.x3max])))
             
     mu = ad.header('units','mu',float)
@@ -189,10 +186,10 @@ def add_tran(ad):
     where=ad.data('temp')<ad.header('problem','t_cold',float)
     amx, amy, amz = 0.0, 0.0, 1.0
     # TODO(@mhguo): may break when MPI is used since not all ranks have cold gas
-    if (where.any()):
-        amx=ad.sum('amx',where=where,weights='mass')
-        amy=ad.sum('amy',where=where,weights='mass')
-        amz=ad.sum('amz',where=where,weights='mass')
+    #if (where.any()):
+    amx=ad.sum('amx',where=where,weights='mass')
+    amy=ad.sum('amy',where=where,weights='mass')
+    amz=ad.sum('amz',where=where,weights='mass')
     if (amx==0.0 and amy==0.0 and amz==0.0):
         amx, amy, amz = 0.0, 0.0, 1.0
     def normal(vec):
@@ -222,6 +219,7 @@ def add_data(ad,add_bcc=True):
     ad.add_data_func('tran_bccz', lambda d : d.ad.tran[2,0]*d('bccx')+d.ad.tran[2,1]*d('bccy')+d.ad.tran[2,2]*d('bccz'))
 
     ad.add_data_func('tran_R', lambda d : xp.sqrt(d('tran_x')**2+d('tran_y')**2))
+    ad.add_data_func('tran_z/R', lambda d : d('tran_z')/d('tran_R'))
     ad.add_data_func('tran_velR', lambda d : (d('tran_x')*d('tran_velx')+d('tran_y')*d('tran_vely'))/d('tran_R'))
     ad.add_data_func('tran_velphi', lambda d : (d('tran_x')*d('tran_vely')-d('tran_y')*d('tran_velx'))/d('tran_R'))
     ad.add_data_func('tran_bccR', lambda d : (d('tran_x')*d('tran_bccx')+d('tran_y')*d('tran_bccy'))/d('tran_R'))
@@ -237,9 +235,12 @@ def add_data(ad,add_bcc=True):
 
     ad.add_data_func('tran_Omega', lambda d : xp.sqrt(d.ad.accel(d('tran_R'))/d('tran_R')))
     ad.add_data_func('tran_dens_velR', lambda d : d('dens')*d('tran_velR'))
+    ad.add_data_func('tran_dens_velphi', lambda d : d('dens')*d('tran_velphi'))
     ad.add_data_func('tran_dens_velz', lambda d : d('dens')*d('tran_velz'))
     ad.add_data_func('tran_radial_flow', lambda d : 0.5*d('dens')*d('tran_velR')*d('tran_Omega'))
-    ad.add_data_func('tran_z/R', lambda d : d('tran_z')/d('tran_R'))
+    ad.add_data_func('tran_dens_velR^2', lambda d : d('dens')*d('tran_velR^2'))
+    ad.add_data_func('tran_dens_velphi^2', lambda d : d('dens')*d('tran_velphi^2'))
+    ad.add_data_func('tran_dens_velz^2', lambda d : d('dens')*d('tran_velz^2'))
 
     ad.add_data_func('tran_stress_zphi_hydro/R', lambda d : d('tran_stress_zphi_hydro')/d('tran_R'))
     ad.add_data_func('tran_stress_zphi_maxwell/R', lambda d : d('tran_stress_zphi_maxwell')/d('tran_R'))
@@ -251,6 +252,7 @@ def add_data(ad,add_bcc=True):
     ad.add_data_func('dens_initial', lambda d : xp.interp(d('r'),xp.asarray(d.ad.rad_initial['r']),xp.asarray(d.ad.rad_initial['dens'])))
     ad.add_data_func('temp_initial', lambda d : xp.interp(d('r'),xp.asarray(d.ad.rad_initial['r']),xp.asarray(d.ad.rad_initial['temp'])))
     ad.add_data_func('vel_kep', lambda d : xp.interp(d('r'),xp.asarray(d.ad.rad_initial['r']),xp.asarray(d.ad.rad_initial['v_kep'])))
+    ad.add_data_func('vkep', lambda d : d('vel_kep'))
     ad.add_data_func('t_hot', lambda d : d.ad.header('problem','tf_hot',float)*d('temp_initial'))
 
     '''
@@ -268,5 +270,64 @@ def add_data(ad,add_bcc=True):
             ad.add_data_func(var+'_cold', lambda d, var=var : d(var)*(d('temp')<d.ad.header('problem','t_cold',float)))
             ad.add_data_func(var+'_warm', lambda d, var=var : d(var)*(d('temp')>=d.ad.header('problem','t_cold',float))*(d('temp')<d('t_hot')))
             ad.add_data_func(var+'_hot', lambda d, var=var : d(var)*(d('temp')>=d('t_hot')))
+
+    for i in ['x','y','z']:
+        for j in ['x','y','z']:
+            # stress tensor
+            ad.add_data_func(f'T_kin_{i}{j}', lambda d,i=i,j=j : d(f'dens*vel{i}*vel{j}'))
+            ad.add_data_func(f'T_mag_{i}{j}', lambda d,i=i,j=j : d(f'bcc{i}*bcc{j}'))
+
+    add_gradient(ad)
+
+    return
+
+def add_gradient(ad):
+    for ax,axp,axm in zip(['x','y','z'],['y','z','x'],['z','x','y']):
+        for var in ['pres','pgas','pmag']:
+            ad.add_data_func(f'd{var}d{ax}', lambda d,var=var,ax=ax:d.ad.gradient(d(var),ax,**d.kwargs))
+            ad.add_data_func(f'f_{var}_{ax}', lambda d,var=var,ax=ax:d(f'd{var}d{ax}'))
+        ad.add_data_func(f'grad_rhovv_{ax}', lambda d,ax=ax : 
+                        d.ad.gradient(d(f'dens*velx*vel{ax}'),ax,**d.kwargs)
+                        +d.ad.gradient(d(f'dens*vely*vel{ax}'),ax,**d.kwargs)
+                        +d.ad.gradient(d(f'dens*velz*vel{ax}'),ax,**d.kwargs)
+                        )
+        ad.add_data_func(f'grad_bb_{ax}', lambda d,ax=ax : 
+                        d.ad.gradient(d(f'bccx*bcc{ax}'),ax,**d.kwargs)
+                        +d.ad.gradient(d(f'bccy*bcc{ax}'),ax,**d.kwargs)
+                        +d.ad.gradient(d(f'bccz*bcc{ax}'),ax,**d.kwargs)
+                        )
+        
+        ad.add_data_func(f'f_kin_{ax}', lambda d,ax=ax:d(f'grad_rhovv_{ax}'))
+        ad.add_data_func(f'f_mag_{ax}', lambda d,ax=ax:d(f'f_pmag_{ax}')-d(f'grad_bb_{ax}'))
+        ad.add_data_func(f'f_therm_{ax}', lambda d,ax=ax:d(f'f_pgas_{ax}'))
+        ad.add_data_func(f'f_mtens_{ax}', lambda d,ax=ax:-d(f'grad_bb_{ax}'))
+        for k in ['kin','mag','therm','pmag','mtens']:
+            ad.add_data_func(f'a_{k}_{ax}', lambda d,k=k,ax=ax:d(f'f_{k}_{ax}')/d('dens'))
+            ad.add_data_func(f'Tau_{k}_{ax}', lambda d,k=k,ax=ax,axm=axm,axp=axp:d(axp)*d(f'f_{k}_{axm}')-d(axm)*d(f'f_{k}_{axp}'))
+            ad.add_data_func(f'tau_{k}_{ax}', lambda d,k=k,ax=ax:d(f'Tau_{k}_{ax}')/d('dens'))
+            
+            # ad.add_data_func(f'a_kin_{ax}', lambda d,ax=ax:d(f'f_kin_{ax}')/d('dens'))
+            # ad.add_data_func(f'a_mag_{ax}', lambda d,ax=ax:d(f'f_mag_{ax}')/d('dens'))
+            # ad.add_data_func(f'a_therm_{ax}', lambda d,ax=ax:d(f'f_therm_{ax}')/d('dens'))    
+            
+            # ad.add_data_func(f'Tau_kin_{ax}', lambda d,ax=ax,axm=axm,axp=axp:d(axp)*d(f'f_kin_{axm}')-d(axm)*d(f'f_kin_{axp}'))
+            # ad.add_data_func(f'Tau_mag_{ax}', lambda d,ax=ax,axm=axm,axp=axp:d(axp)*d(f'f_mag_{axm}')-d(axm)*d(f'f_mag_{axp}'))
+            # ad.add_data_func(f'Tau_therm_{ax}', lambda d,ax=ax,axm=axm,axp=axp:d(axp)*d(f'f_therm_{axm}')-d(axm)*d(f'f_therm_{axp}'))
+            
+            # ad.add_data_func(f'tau_kin_{ax}', lambda d,ax=ax:d(f'Tau_kin_{ax}')/d('dens'))
+            # ad.add_data_func(f'tau_mag_{ax}', lambda d,ax=ax:d(f'Tau_mag_{ax}')/d('dens'))
+            # ad.add_data_func(f'tau_therm_{ax}', lambda d,ax=ax:d(f'Tau_therm_{ax}')/d('dens'))
+    for k in ['kin','mag','therm','pmag','mtens']:
+        ad.add_data_func(f'Tau*jhat_{k}', lambda d,k=k:(d(f'Tau_{k}_x')*d('amx')+d(f'Tau_{k}_y')*d('amy')+d(f'Tau_{k}_z')*d('amz'))/d('amtot'))
+        ad.add_data_func(f'-Tau*jhat_{k}', lambda d,k=k:-d(f'Tau*jhat_{k}'))
+        ad.add_data_func(f'tau*jhat_{k}', lambda d,k=k:(d(f'tau_{k}_x')*d('amx')+d(f'tau_{k}_y')*d('amy')+d(f'tau_{k}_z')*d('amz'))/d('amtot'))
+        ad.add_data_func(f'-tau*jhat_{k}', lambda d,k=k:-d(f'tau*jhat_{k}'))
+        ad.add_data_func(f'tau*jhat_{k}/vkep^2', lambda d,k=k:d(f'tau*jhat_{k}')/d('vkep')**2)
+        ad.add_data_func(f'-tau*jhat_{k}/vkep^2', lambda d,k=k:d(f'-tau*jhat_{k}')/d('vkep')**2)
+    # ad.add_data_func(f'tau*jhat_kin', lambda d,ax=ax:(d('tau_kin_x')*d('amx')+d('tau_kin_y')*d('amy')+d('tau_kin_z')*d('amz'))/d('amtot'))
+    # ad.add_data_func(f'tau*jhat_mag', lambda d,ax=ax:(d('tau_mag_x')*d('amx')+d('tau_mag_y')*d('amy')+d('tau_mag_z')*d('amz'))/d('amtot'))
+
+    # ad.add_data_func(f'-tau*jhat_kin', lambda d,ax=ax:-d('tau*jhat_kin'))
+    # ad.add_data_func(f'-tau*jhat_mag', lambda d,ax=ax:-d('tau*jhat_mag'))
 
     return

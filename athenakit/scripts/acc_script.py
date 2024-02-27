@@ -119,21 +119,18 @@ def adwork(ad,zlist=None,dlevel=1,bins=256):
     
     print('prof2d '+str(ad.num))
     varl=["dens",'temp','pres','btot^2','beta',"tran_velR","tran_velz","tran_velphi","tran_bccR","tran_bccz","tran_bccphi",
-          "tran_dens_velR","tran_dens_velz","tran_radial_flow",
+          "tran_dens_velR","tran_dens_velphi","tran_dens_velz","tran_radial_flow",
+          "tran_dens_velR^2","tran_dens_velz^2","tran_dens_velphi^2","tran_bccR^2","tran_bccz^2","tran_bccphi^2",
           "tran_stress_zphi_hydro","tran_stress_zphi_maxwell","tran_stress_zphi",
           "tran_stress_Rphi_hydro","tran_stress_Rphi_maxwell","tran_stress_Rphi",
           ]
+    ad.set_profile2d(['tran_R','tran_z/tran_R'],varl=varl,key='tRzR_vol',bins=[512,128],weights='vol',scales=['log','linear'],
+                    range=[[ad.rin,ad.rmax],[-5.0,5.0]],)
     Rmax=ad.rmax/2**7 # 250 pc
-    ad.set_profile2d(['tran_R','tran_z'],varl=varl,key='tRz_vol',bins=128,weights='vol',
-                     where=np.logical_and(ad.data('tran_R')<Rmax,np.abs(ad.data('tran_z'))<Rmax))
+    # ad.set_profile2d(['tran_R','tran_z'],varl=varl,key='tRz_vol',bins=128,weights='vol',
+    #                  where=np.logical_and(ad.data('tran_R')<Rmax,np.abs(ad.data('tran_z'))<Rmax))
     ad.set_profile('tran_R',varl=varl,key='tR_vol',bins=256,weights='vol',scales='log',
                    where=(ad.data('tran_R')>ad.rin) & (ad.data('tran_R')<10*Rmax) & (np.abs(ad.data('tran_z/R'))<0.1))
-    R_here=5e4 # 16 pc
-    ad.set_profile('tran_z',varl=varl,key='tz_vol_R16pc',bins=128,weights='vol',
-                   where=(ad.data('tran_R')>0.8*R_here) & (ad.data('tran_R')<1.2*R_here) & (np.abs(ad.data('tran_z'))<2*R_here))
-    R_here=5e5 # 160 pc
-    ad.set_profile('tran_z',varl=varl,key='tz_vol_R160pc',bins=128,weights='vol',
-                   where=(ad.data('tran_R')>0.8*R_here) & (ad.data('tran_R')<1.2*R_here) & (np.abs(ad.data('tran_z'))<2*R_here))
 
     return ad
 
@@ -141,17 +138,30 @@ def adupdate(ad):
     acc.add_tools(ad)
     acc.add_tran(ad)
     acc.add_data(ad)
-    varl=["dens",'temp','pres','btot^2','beta',"tran_velR","tran_velz","tran_velphi","tran_bccR","tran_bccz","tran_bccphi",
-          "tran_dens_velR","tran_dens_velz","tran_radial_flow",
-          "tran_stress_zphi_hydro","tran_stress_zphi_maxwell","tran_stress_zphi",
-          "tran_stress_Rphi_hydro","tran_stress_Rphi_maxwell","tran_stress_Rphi",
-          ]
-    #Rmax=ad.rmax/2**7 # 250 pc
-    #ad.set_profile2d(['tran_R','tran_z/R'],varl=varl,key='tRzR_vol',bins=128,range=[[ad.rin,10*Rmax],[-2.0,2.0]],
+    varl=[]
+    #varl+=[['r',f'{s}tau_{k}_{x}/vkep^2'] for x in ['x','y','z'] for s in ['','-'] for k in ['kin','mag','therm','pmag','mtens']]
+    varl+=[['r',f'{s}tau*jhat_{k}/vkep^2'] for s in ['','-'] for k in ['kin','mag','therm','pmag','mtens']]+[['r','dens*vkep^2'],['r','temp/vkep^2']]
+    for var in varl:
+        print(var)
+        ad.set_hist2d([var,],key='mass_cold',weights='mass',bins=[256,128],where=ad.data('temp')<0.1*ad.header('problem','t_cold',float),range=[[ad.rmin,ad.rmax],[1e-7,1e3]],scales=['log','log'])
+    varl = [f'tau*jhat_{k}/vkep^2' for k in ['kin','mag','therm','pmag','mtens']]
+    varl += ['amtot','vkep^2','c_s^2/vkep^2','beta','pmag/pgas','vtot^2/vkep^2','v_A^2/vkep^2','vrot^2/vkep^2']
+    ad.set_profile('r',varl,key='r_mass_cold',weights='mass',bins=256,where=ad.data('temp')<0.1*ad.header('problem','t_cold',float),range=[[ad.rmin,ad.rmax]],scales=['log',])
+
+    # varl=["dens",'temp','pres','btot^2','beta',"tran_velR","tran_velz","tran_velphi","tran_bccR","tran_bccz","tran_bccphi",
+    #       "tran_dens_velR","tran_dens_velphi","tran_dens_velz","tran_radial_flow",
+    #       "tran_dens_velR^2","tran_dens_velz^2","tran_dens_velphi^2","tran_bccR^2","tran_bccz^2","tran_bccphi^2",
+    #       "tran_stress_zphi_hydro","tran_stress_zphi_maxwell","tran_stress_zphi",
+    #       "tran_stress_Rphi_hydro","tran_stress_Rphi_maxwell","tran_stress_Rphi",
+    #       ]
+    # ad.set_profile2d(['tran_R','tran_z/tran_R'],varl=varl,key='tRzR_vol',bins=[512,128],weights='vol',scales=['log','linear'],
+    #                 range=[[ad.rin,ad.rmax],[-5.0,5.0]],)
+    # Rmax=ad.rmax/2**7 # 250 pc
+    # ad.set_profile2d(['tran_R','tran_z/R'],varl=varl,key='tRzR_vol',bins=128,range=[[ad.rin,10*Rmax],[-2.0,2.0]],
     #                 weights='vol',scales=['log','linear'])
-    Rmax=ad.rmax/2**10 # 30 pc
-    ad.set_profile2d(['tran_R','tran_z'],varl=varl,key='tRz_l10_vol',bins=128,weights='vol',
-                     where=np.logical_and(ad.data('tran_R')<Rmax,np.abs(ad.data('tran_z'))<Rmax))
+    # Rmax=ad.rmax/2**10 # 30 pc
+    # ad.set_profile2d(['tran_R','tran_z'],varl=varl,key='tRz_l10_vol',bins=128,weights='vol',
+    #                  where=np.logical_and(ad.data('tran_R')<Rmax,np.abs(ad.data('tran_z'))<Rmax))
     return ad
 
 def adplot(ad,zlist=None,dlevel=1):
@@ -171,7 +181,7 @@ def adplot(ad,zlist=None,dlevel=1):
     jlist=[0]+list(range(max_level-8,max_level+1,2))
     if (zlist is not None): jlist=[int(z) for z in zlist]
     fig,axes=ak.subplots(4,6,figsize=(16,10),dpi=128,wspace=0.3,hspace=0.25,bottom=0.08,top=0.92,left=0.05,right=0.95,raw=True)
-    fig.suptitle(fr'Time={ad.time*tunit:.2f} kyr (Black lines: $v$, Grey lines: $B$)')
+    fig.suptitle(fr'Time={ad.time:.2e}={ad.time*tunit:.2f} kyr (Black lines: $v$, Grey lines: $B$)')
     for i,j in enumerate(jlist):#
         zoom=j
         vec=None
@@ -209,7 +219,7 @@ def adplot(ad,zlist=None,dlevel=1):
 
     #'''
     fig,axes=ak.subplots(4,6,figsize=(16,10),dpi=128,wspace=0.3,hspace=0.25,bottom=0.08,top=0.92,left=0.05,right=0.95,raw=True)
-    fig.suptitle(fr'Time={ad.time*tunit:.2f} kyr (Black lines: $v$, Grey lines: $B$)')
+    fig.suptitle(fr'Time={ad.time:.2e}={ad.time*tunit:.2f} kyr (Black lines: $v$, Grey lines: $B$)')
     for i,j in enumerate(jlist):#
         zoom=j
         vec=None
@@ -247,7 +257,7 @@ def adplot(ad,zlist=None,dlevel=1):
 
     #'''
     fig,axes=ak.subplots(4,6,figsize=(16,10),dpi=128,wspace=0.3,hspace=0.25,bottom=0.08,top=0.92,left=0.05,right=0.95,raw=True)
-    fig.suptitle(fr'Time={ad.time*tunit:.2f} kyr (Black lines: $v$, Grey lines: $B$)')
+    fig.suptitle(fr'Time={ad.time:.2e}={ad.time*tunit:.2f} kyr (Black lines: $v$, Grey lines: $B$)')
     for i,j in enumerate(jlist):#
         zoom=j
         vec=None
@@ -286,7 +296,7 @@ def adplot(ad,zlist=None,dlevel=1):
     #'''
     print('phase '+str(ad.num))
     fig,axes=ak.subplots(2,4,figsize=(16,8),dpi=128,wspace=0.5,top=0.88,hspace=0.4,left=0.05,right=0.95,raw=True)
-    fig.suptitle(f'Time={ad.time*tunit} kyr')
+    fig.suptitle(f'Time={ad.time:.2e}={ad.time*tunit} kyr')
     savelabel=f'phase_0'
     vmin, vmax = 1e0,1e12
     locs=np.where((ran['r']-ad.rin)*(ran['r']-ad.rmax)<=0)
@@ -322,7 +332,7 @@ def adplot(ad,zlist=None,dlevel=1):
     fig=ad.plot_phase(fig=fig,ax=axes[1,3],key=key,varname='r,beta',weights=weights,xlabel=r'$r\rm\,[M]$',ylabel=r'$\beta$',label=r'$M\rm\,[M_\odot]$',
                       title=None,unit=munit,density=True,xunit=lunit,norm='log',vmin=vmin,vmax=vmax,cmap=cmap,aspect='auto')
 
-    fig.suptitle(fr'Time={ad.time*tunit:.2f} kyr (Dashed lines: virial equilibrium)')
+    fig.suptitle(fr'Time={ad.time:.2e}={ad.time*tunit:.2f} kyr (Dashed lines: virial equilibrium)')
     fig.savefig(f"{figdir}/fig_{savelabel}_{ad.num:04d}.png")#,bbox_inches='tight'
     plt.close(fig)
     #'''
@@ -331,7 +341,7 @@ def adplot(ad,zlist=None,dlevel=1):
     print('radial '+str(ad.num))
     #fig,axes=ak.subplots(2,2,figsize=(8,6),dpi=200,wspace=0.3,top=0.92,hspace=0.1,sharex=False,raw=True)
     fig,axes = ak.subplots(2,3,figsize=(12,6),dpi=128,top=0.92,wspace=0.25,left=0.05,right=0.95,raw=True)
-    fig.suptitle(f'Time={ad.time*tunit:.2f} kyr')
+    fig.suptitle(f'Time={ad.time:.2e}={ad.time*tunit:.2f} kyr')
     savelabel=f'radial_0'
 
     colors=['k','#3369E8','#009925','#FBBC05','#EA4335',]
@@ -411,6 +421,7 @@ if __name__ == "__main__":
     parser.add_argument('-a', '--all',  action='store_true', default=False)
     parser.add_argument('-b', '--beg', type=int, default = 0)
     parser.add_argument('-e', '--end', type=int, default = 0)
+    parser.add_argument('-s', '--step', type=int, default = 1)
     parser.add_argument('--batch_size', type=int, default = 0)
     parser.add_argument('-v', '--variables', nargs='+', help='<Required> Set flag', default=['mhd_w_bcc','mhd_divb'])
     parser.add_argument('-z', '--zooms', nargs='+', help='<Required> Set flag', default=[])
@@ -446,7 +457,7 @@ if __name__ == "__main__":
                  os.path.getmtime(file)>os.path.getmtime(pklpath+f'Base.{num:05d}.pkl')):
                 numlist.append(num)
     numlist=sorted(list(set(numlist)))
-    if (args.end-args.beg>0): numlist=list(range(args.beg,args.end))
+    if (args.end-args.beg>0): numlist=list(range(args.beg,args.end,args.step))
     print('Work for', data_path, numlist)
     # run
     def run(i):
@@ -479,11 +490,11 @@ if __name__ == "__main__":
                 print(f'plotting i={i}')
                 adplot(ad,zooms,dlevel)
             if ('u' in task):
-                print(f'loading athdf i={i}')
-                filename=athdfpath+f'/{variable}.{i:05d}.athdf'
+                print(f'loading binary i={i}')
+                filename=binpath+f'{variable}.{i:05d}.bin'
                 ad.load(filename)
                 print(f'loading pkl i={i}')
-                filename=pklpath+f'/Base.{i:05d}.pkl'
+                filename=pklpath+f'Base.{i:05d}.pkl'
                 ad.load(filename)
                 print(f'updating i={i}')
                 adupdate(ad).save(filename)
