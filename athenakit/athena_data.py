@@ -1183,3 +1183,12 @@ class AthenaDataSet:
     
     def items(self):
         return [(n,self.ads[n]) for n in self.ns]
+
+    def pop(self,n):
+        return self.ads.pop(n)
+    
+    def popitem(self):
+        return self.ads.popitem()
+    
+    def clear(self):
+        return self.ads.clear()

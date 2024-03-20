@@ -126,11 +126,11 @@ def adwork(ad,zlist=None,dlevel=1,bins=256):
           ]
     ad.set_profile2d(['tran_R','tran_z/tran_R'],varl=varl,key='tRzR_vol',bins=[512,128],weights='vol',scales=['log','linear'],
                     range=[[ad.rin,ad.rmax],[-5.0,5.0]],)
-    Rmax=ad.rmax/2**7 # 250 pc
+    ad.set_profile('tran_R',varl=varl,key='tR_vol',bins=256,weights='vol',scales='log',range=[[ad.rmin,ad.rmax]],
+                   where=(np.abs(ad.data('tran_z/R'))<0.1))
+    # Rmax=ad.rmax/2**7 # 250 pc
     # ad.set_profile2d(['tran_R','tran_z'],varl=varl,key='tRz_vol',bins=128,weights='vol',
     #                  where=np.logical_and(ad.data('tran_R')<Rmax,np.abs(ad.data('tran_z'))<Rmax))
-    ad.set_profile('tran_R',varl=varl,key='tR_vol',bins=256,weights='vol',scales='log',
-                   where=(ad.data('tran_R')>ad.rin) & (ad.data('tran_R')<10*Rmax) & (np.abs(ad.data('tran_z/R'))<0.1))
 
     return ad
 
@@ -143,9 +143,11 @@ def adupdate(ad):
     varl+=[['r',f'{s}tau*jhat_{k}/vkep^2'] for s in ['','-'] for k in ['kin','mag','therm','pmag','mtens']]+[['r','dens*vkep^2'],['r','temp/vkep^2']]
     for var in varl:
         print(var)
+        ad.set_hist2d([var,],key='mass',weights='mass',bins=[256,128],range=[[ad.rmin,ad.rmax],[1e-7,1e3]],scales=['log','log'])
         ad.set_hist2d([var,],key='mass_cold',weights='mass',bins=[256,128],where=ad.data('temp')<0.1*ad.header('problem','t_cold',float),range=[[ad.rmin,ad.rmax],[1e-7,1e3]],scales=['log','log'])
     varl = [f'tau*jhat_{k}/vkep^2' for k in ['kin','mag','therm','pmag','mtens']]
     varl += ['amtot','vkep^2','c_s^2/vkep^2','beta','pmag/pgas','vtot^2/vkep^2','v_A^2/vkep^2','vrot^2/vkep^2']
+    ad.set_profile('r',varl,key='r_mass',weights='mass',bins=256,range=[[ad.rmin,ad.rmax]],scales=['log',])
     ad.set_profile('r',varl,key='r_mass_cold',weights='mass',bins=256,where=ad.data('temp')<0.1*ad.header('problem','t_cold',float),range=[[ad.rmin,ad.rmax]],scales=['log',])
 
     # varl=["dens",'temp','pres','btot^2','beta',"tran_velR","tran_velz","tran_velphi","tran_bccR","tran_bccz","tran_bccphi",
@@ -482,6 +484,16 @@ if __name__ == "__main__":
                 print(f'working i={i}')
                 adwork(ad,zooms,dlevel).save(pklpath+f'/Base.{ad.num:05d}.pkl')
                 #adwork(ad).save(ad.path.replace('athdf','h5')+f'/Base.{ad.num:05d}.h5')
+            if ('u' in task):
+                if ('w' not in task):
+                    print(f'loading binary i={i}')
+                    filename=binpath+f'/{variable}.{i:05d}.bin'
+                    ad.load(filename)
+                    print(f'loading pkl i={i}')
+                    filename=pklpath+f'/Base.{i:05d}.pkl'
+                    ad.load(filename)
+                print(f'updating i={i}')
+                adupdate(ad).save(pklpath+f'/Base.{ad.num:05d}.pkl')
             if ('p' in task and ak.macros.rank==0):
                 print(f'loading pkl i={i}')
                 filename=pklpath+f'/Base.{i:05d}.pkl'
@@ -489,15 +501,6 @@ if __name__ == "__main__":
                 ad.figpath=figpath
                 print(f'plotting i={i}')
                 adplot(ad,zooms,dlevel)
-            if ('u' in task):
-                print(f'loading binary i={i}')
-                filename=binpath+f'{variable}.{i:05d}.bin'
-                ad.load(filename)
-                print(f'loading pkl i={i}')
-                filename=pklpath+f'Base.{i:05d}.pkl'
-                ad.load(filename)
-                print(f'updating i={i}')
-                adupdate(ad).save(filename)
         #except Exception as excp:
         #    print(f"File {filename}:",sys.exc_info()[2].tb_frame,'\n',excp)
         del ad
