@@ -704,6 +704,7 @@ class AthenaData:
             bin_varl = [bin_varl]
         if (type(varl) is str):
             varl = [varl]
+        varl = list(dict.fromkeys(varl)) # remove duplicates
         if (type(bins) is int):
             bins = [bins]*len(bin_varl)
         if (range is None):
