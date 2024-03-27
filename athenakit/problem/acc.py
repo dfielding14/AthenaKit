@@ -219,10 +219,17 @@ def add_data(ad,add_bcc=True):
     ad.add_data_func('tran_bccy', lambda d : d.ad.tran[1,0]*d('bccx')+d.ad.tran[1,1]*d('bccy')+d.ad.tran[1,2]*d('bccz'))
     ad.add_data_func('tran_bccz', lambda d : d.ad.tran[2,0]*d('bccx')+d.ad.tran[2,1]*d('bccy')+d.ad.tran[2,2]*d('bccz'))
 
+    ad.add_data_func('tran_r', lambda d : d('r'))
+    ad.add_data_func('tran_theta', lambda d : xp.arccos(d('tran_z')/d('r')))
+    ad.add_data_func('tran_phi', lambda d : xp.arctan2(d('tran_y'),d('tran_x')))
     ad.add_data_func('tran_R', lambda d : xp.sqrt(d('tran_x')**2+d('tran_y')**2))
     ad.add_data_func('tran_z/R', lambda d : d('tran_z')/d('tran_R'))
+    ad.add_data_func('tran_velr', lambda d : d('velr'))
+    ad.add_data_func('tran_vtheta', lambda d : (d('tran_z')*d('tran_velr')-d('tran_r')*d('tran_velz'))/d('tran_R'))
     ad.add_data_func('tran_velR', lambda d : (d('tran_x')*d('tran_velx')+d('tran_y')*d('tran_vely'))/d('tran_R'))
     ad.add_data_func('tran_velphi', lambda d : (d('tran_x')*d('tran_vely')-d('tran_y')*d('tran_velx'))/d('tran_R'))
+    ad.add_data_func('tran_bccr', lambda d : d('bccr'))
+    ad.add_data_func('tran_btheta', lambda d : (d('tran_z')*d('tran_bccr')-d('tran_r')*d('tran_bccz'))/d('tran_R'))
     ad.add_data_func('tran_bccR', lambda d : (d('tran_x')*d('tran_bccx')+d('tran_y')*d('tran_bccy'))/d('tran_R'))
     ad.add_data_func('tran_bccphi', lambda d : (d('tran_x')*d('tran_bccy')-d('tran_y')*d('tran_bccx'))/d('tran_R'))
 
@@ -262,6 +269,8 @@ def add_data(ad,add_bcc=True):
     #]=ran['dens']**2*kit.CoolFnShure(ran['tempK'])/unit.cooling_cgs/n_t_h_ratio**2
 
     ad.add_data_func('bdotv', lambda d : d('bccx')*d('velx')+d('bccy')*d('vely')+d('bccz')*d('velz'))
+    ad.add_data_func('tran_velp^2', lambda d : d('tran_velR')**2+d('tran_velz')**2)
+    ad.add_data_func('tran_bpdotvp', lambda d : d('tran_bccR')*d('tran_velR')+d('tran_bccz')*d('tran_velz'))
     ad.add_data_func('Poyt_x', lambda d : d('btot^2')*d('velx')-d('bccx')*d('bdotv'))
     ad.add_data_func('Poyt_y', lambda d : d('btot^2')*d('vely')-d('bccy')*d('bdotv'))
     ad.add_data_func('Poyt_z', lambda d : d('btot^2')*d('velz')-d('bccz')*d('bdotv'))
@@ -269,6 +278,7 @@ def add_data(ad,add_bcc=True):
     #ad.add_data_func('Be_hyd', lambda d : (d('ekin')+d('pgas')/(d.ad.gamma-1.0))/d('dens')+d('potential'))
     #ad.add_data_func('Be_r', lambda d : (d('ekin')+d('pgas')/(d.ad.gamma-1.0)+d('Poyt_r')/d('vtot'))/d('dens')+d('potential'))
     ad.add_data_func('Be', lambda d : (d('etot')+d('ptot')-d('bdotv')**2/d('vtot^2'))/d('dens')+d('potential'))
+    ad.add_data_func('tran_Be_p', lambda d : (d('etot')+d('ptot')-d('bdotv')*d('tran_bpdotvp')/d('tran_velp^2'))/d('dens')+d('potential'))
 
     '''
     for var in ['mdot','mdotin','mdotout','momdot','momdotin','momdotout','eidot','eidotin','eidotout','ekdot','ekdotin','ekdotout']:

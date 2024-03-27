@@ -134,10 +134,70 @@ def adwork(ad,zlist=None,dlevel=1,bins=256):
 
     return ad
 
-def adupdate(ad):
+def adupdate(ad,dlevel=1,bins=256):
     acc.add_tools(ad)
     acc.add_tran(ad)
     acc.add_data(ad)
+
+    t_cold=ad.header('problem','t_cold',float)
+    # TODO: use a correct ran!
+    t_initial=xp.interp(ad.data('r'),xp.asarray(ad.rad_initial['r']),xp.asarray(ad.rad_initial['temp']))
+    t_hot=ad.header('problem','tf_hot',float)*t_initial
+
+    #ad.add_data('temp_ini',ad.data('temp_initial'))
+    ad.add_data_func('temp_ini',lambda d:d('temp_initial'))
+    ##ad.add_data('temp_hot',ad.data('temp')*np.exp(-100*(ad.data('temp_ini')/ad.data('temp'))))
+    #ad.add_data('temp_hot',ad.data('temp')*(ad.data('temp')>3*ad.data('temp_ini')))
+    #ad.add_data('v_kep',ad.data('vel_kep'))
+    ##ad.add_data('vel_high',ad.data('vtot')*(ad.data('vtot')>2*ad.data('v_kep')))
+    ##ad.add_data('egas_high',ad.data('egas')/ad.data('dens')*(xp.logical_or(ad.data('vtot')>2*ad.data('v_kep'), ad.data('temp')>3*ad.data('temp_ini'))))
+    ##ad.add_data('dens*Be_hyd_high',ad.data('dens')*ad.data('Be_hyd')*(ad.data('Be_hyd')>4*ad.data('temp_ini')))
+    #ad.add_data('dens*Be_high',ad.data('dens')*ad.data('Be')*(ad.data('Be')>4*ad.data('temp_ini')))
+    #ad.add_data_func('dens*Be_high',lambda d:d('dens')*d('Be')*(d('Be')>4*d('temp_ini')))
+
+    varl=["dens",'temp','pres','btot^2','beta','vtot^2',"tran_velr^2","tran_vtheta^2","tran_velphi^2",
+          "tran_velr","tran_vtheta","tran_velphi","tran_bccr","tran_btheta","tran_bccphi",
+          "dens*tran_velr","dens*tran_velphi","dens*tran_vtheta","Be","tran_Be_p",
+          "dens*tran_velr^2","dens*tran_vtheta^2","dens*tran_velphi^2","tran_bccr^2","tran_btheta^2","tran_bccphi^2",
+          ]
+    ad.set_profile2d(['tran_r','tran_theta'],varl=varl,key='trtheta_vol',bins=[512,128],weights='vol',scales=['log','linear'],
+                    range=[[ad.rin,ad.rmax],[0.0,np.pi]],)
+    ad.set_profile2d(['tran_r','tran_phi'],varl=varl,key='trphi_vol',bins=[512,128],weights='vol',scales=['log','linear'],
+                    range=[[ad.rin,ad.rmax],[-np.pi,np.pi]],)
+    ad.set_profile2d(['tran_r','tran_phi'],varl=varl,key='trphi_zr05_vol',bins=[512,128],weights='vol',scales=['log','linear'],where=ad.data('tran_z/tran_r')**2<0.25,
+                    range=[[ad.rin,ad.rmax],[-np.pi,np.pi]],)
+
+    varl=["dens",'temp','pres','btot^2','beta',"tran_velR","tran_velz","tran_velphi","tran_bccR","tran_bccz","tran_bccphi",
+          "tran_dens_velR","tran_dens_velphi","tran_dens_velz","tran_radial_flow","Be",
+          "tran_dens_velR^2","tran_dens_velz^2","tran_dens_velphi^2","tran_bccR^2","tran_bccz^2","tran_bccphi^2",
+          "tran_stress_zphi_hydro","tran_stress_zphi_maxwell","tran_stress_zphi",
+          "tran_stress_Rphi_hydro","tran_stress_Rphi_maxwell","tran_stress_Rphi",
+          ]
+
+    ad.set_profile2d(['tran_R','tran_z/tran_R'],varl=varl,key='tRzR_vol',bins=[512,128],weights='vol',scales=['log','linear'],
+                    range=[[ad.rin,ad.rmax],[-5.0,5.0]],)
+    ad.set_profile2d(['tran_R','tran_phi'],varl=varl,key='tRphi_zR05_vol',bins=[512,128],weights='vol',scales=['log','linear'],where=ad.data('tran_z/tran_R')**2<0.25,
+                    range=[[ad.rin,ad.rmax],[-np.pi,np.pi]],)
+
+    # hist2d
+    print('hist2d '+str(ad.num))
+    varl=[['dens','temp'],['r','dens'],['r','temp'],['r','pres'],['r','c_s'],['r','amtot'],
+          ['r','btot'],['r','beta'],['r','vtot'],['r','v_A'],['r','cooling_time*Omega']]
+    ad.set_hist2d(varl,key='vol',weights='vol',bins=bins,scales='log')
+    ad.set_hist2d(varl,key='mass',weights='mass',bins=bins,scales='log')
+    print('cold')
+    where = ad.data('temp')<t_cold
+    if (where.any()):
+        ad.set_hist2d(varl,key='vol_cold',weights='vol',bins=bins,scales='log',where=where)
+        ad.set_hist2d(varl,key='mass_cold',weights='mass',bins=bins,scales='log',where=where)
+    print('hot')
+    where = ad.data('temp')>t_hot
+    if (where.any()):
+        ad.set_hist2d(varl,key='vol_hot',weights='vol',bins=bins,scales='log',where=where)
+        ad.set_hist2d(varl,key='mass_hot',weights='mass',bins=bins,scales='log',where=where)
+
+    return ad
+
     varl=[]
     #varl+=[['r',f'{s}tau_{k}_{x}/vkep^2'] for x in ['x','y','z'] for s in ['','-'] for k in ['kin','mag','therm','pmag','mtens']]
     varl+=[['r',f'{s}tau*jhat_{k}/vkep^2'] for s in ['','-'] for k in ['kin','mag','therm','pmag','mtens']]+[['r','dens*vkep^2'],['r','temp/vkep^2']]
@@ -146,18 +206,40 @@ def adupdate(ad):
         ad.set_hist2d([var,],key='mass',weights='mass',bins=[256,128],range=[[ad.rmin,ad.rmax],[1e-7,1e3]],scales=['log','log'])
         ad.set_hist2d([var,],key='mass_cold',weights='mass',bins=[256,128],where=ad.data('temp')<0.1*ad.header('problem','t_cold',float),range=[[ad.rmin,ad.rmax],[1e-7,1e3]],scales=['log','log'])
     varl = [f'tau*jhat_{k}/vkep^2' for k in ['kin','mag','therm','pmag','mtens']]
+    varl += [f'tau_{k}_{x}/vkep^2' for k in ['kin','mag','therm','pmag','mtens'] for x in ['x','y','z']]
     varl += ['amtot','vkep^2','c_s^2/vkep^2','beta','pmag/pgas','vtot^2/vkep^2','v_A^2/vkep^2','vrot^2/vkep^2']
     ad.set_profile('r',varl,key='r_mass',weights='mass',bins=256,range=[[ad.rmin,ad.rmax]],scales=['log',])
     ad.set_profile('r',varl,key='r_mass_cold',weights='mass',bins=256,where=ad.data('temp')<0.1*ad.header('problem','t_cold',float),range=[[ad.rmin,ad.rmax]],scales=['log',])
 
-    # varl=["dens",'temp','pres','btot^2','beta',"tran_velR","tran_velz","tran_velphi","tran_bccR","tran_bccz","tran_bccphi",
-    #       "tran_dens_velR","tran_dens_velphi","tran_dens_velz","tran_radial_flow",
-    #       "tran_dens_velR^2","tran_dens_velz^2","tran_dens_velphi^2","tran_bccR^2","tran_bccz^2","tran_bccphi^2",
-    #       "tran_stress_zphi_hydro","tran_stress_zphi_maxwell","tran_stress_zphi",
-    #       "tran_stress_Rphi_hydro","tran_stress_Rphi_maxwell","tran_stress_Rphi",
-    #       ]
-    # ad.set_profile2d(['tran_R','tran_z/tran_R'],varl=varl,key='tRzR_vol',bins=[512,128],weights='vol',scales=['log','linear'],
-    #                 range=[[ad.rin,ad.rmax],[-5.0,5.0]],)
+
+    max_level=int(ad.mb_logical[:,-1].max())
+    jlist=list(range(0,max_level+1,1))
+    #jlist=[0,3,6,9,12,15,18,21,24]
+    print('proj: '+str(ad.num))
+    ad.add_data('dens*Be_high',ad.data('dens')*ad.data('Be')*(ad.data('Be')>4*ad.data('temp_ini')))
+    for j in jlist:
+        #ad.set_slice(varl=varl,zoom=j,level=j+1)
+        print('level: '+str(j))
+        zoom=j
+        level=j+dlevel
+        varl=['dens','dens*Be_high',]
+        #data_func = lambda ad,var: ad.data_uniform(var,level,ad.xyz(zoom,level))
+        data_func = lambda ad,var: ad.data(var,dtype='uniform',level=level,xyz=ad.xyz(zoom,level))
+        
+        ad.set_profile2d(['x','y'],varl,key=f'x-y_{j}',weights='vol',bins=int(ad.Nx3*2**dlevel),data=data_func,
+                 range=[[ad.x1min/2**zoom,ad.x1max/2**zoom],[ad.x2min/2**zoom,ad.x2max/2**zoom]])
+        ad.set_profile2d(['y','z'],varl,key=f'y-z_{j}',weights='vol',bins=int(ad.Nx1*2**dlevel),data=data_func,
+                 range=[[ad.x2min/2**zoom,ad.x2max/2**zoom],[ad.x3min/2**zoom,ad.x3max/2**zoom]])
+        ad.set_profile2d(['x','z'],varl,key=f'x-z_{j}',weights='vol',bins=int(ad.Nx2*2**dlevel),data=data_func,
+                 range=[[ad.x1min/2**zoom,ad.x1max/2**zoom],[ad.x3min/2**zoom,ad.x3max/2**zoom]])
+        
+        ad.set_profile2d(['tran_x','tran_y'],varl,key=f'tran_x-y_{j}',weights='vol',bins=int(ad.Nx3*2**dlevel),data=data_func,
+                 range=[[ad.x1min/2**zoom,ad.x1max/2**zoom],[ad.x2min/2**zoom,ad.x2max/2**zoom]])
+        ad.set_profile2d(['tran_y','tran_z'],varl,key=f'tran_y-z_{j}',weights='vol',bins=int(ad.Nx1*2**dlevel),data=data_func,
+                 range=[[ad.x2min/2**zoom,ad.x2max/2**zoom],[ad.x3min/2**zoom,ad.x3max/2**zoom]])
+        ad.set_profile2d(['tran_x','tran_z'],varl,key=f'tran_x-z_{j}',weights='vol',bins=int(ad.Nx2*2**dlevel),data=data_func,
+                 range=[[ad.x1min/2**zoom,ad.x1max/2**zoom],[ad.x3min/2**zoom,ad.x3max/2**zoom]])
+        
     # Rmax=ad.rmax/2**7 # 250 pc
     # ad.set_profile2d(['tran_R','tran_z/R'],varl=varl,key='tRzR_vol',bins=128,range=[[ad.rin,10*Rmax],[-2.0,2.0]],
     #                 weights='vol',scales=['log','linear'])

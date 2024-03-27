@@ -25,6 +25,8 @@ def zeros_like(obj):
         return {k:zeros_like(v) for k,v in obj.items()}
     if (type(obj) is list):
         return [zeros_like(a) for a in obj]
+    if (type(obj) is str):
+        return obj
     return np.zeros_like(obj)
 
 def plus(a,b):
@@ -32,6 +34,8 @@ def plus(a,b):
         return {k:plus(a[k],b[k]) for k in a.keys()}
     if (type(a) is list):
         return [plus(a[i],b[i]) for i in range(len(a))]
+    if (type(a) is str):
+        return a
     return a+b
 
 def times(a,b):
@@ -39,6 +43,8 @@ def times(a,b):
         return {k:times(a[k],b) for k in a.keys()}
     if (type(a) is list):
         return [times(a[i],b) for i in range(len(a))]
+    if (type(a) is str):
+        return a
     return a*b
 
 # Convert all binary files in binary path to athdf files in athdf path
@@ -207,6 +213,11 @@ def ave(a,n):
 def smooth(x,s=3,mode='nearest',**kwargs):
     from scipy.ndimage import gaussian_filter
     return gaussian_filter(x,s,mode=mode,**kwargs)
+# TODO(@mhguo): this is just a collection of functions, need to be organized
+def pro_from_hist2d(hist,x='r',y='dens'):
+    x,yrange=hist['centers'][x],hist['centers'][y]
+    ym=[np.average(yrange,weights=hist['dat'][i,:]) for i in range(hist['dat'].shape[0])]
+    return x,ym
 # quantile with weights
 def quantile(x,q,weights=None,axis=None):
     if (weights is None):

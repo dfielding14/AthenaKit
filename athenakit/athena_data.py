@@ -254,8 +254,9 @@ class AthenaData:
         self.data_func['momy'] = lambda d : d('dens')*d('vely')
         self.data_func['momz'] = lambda d : d('dens')*d('velz')
         self.data_func['velr'] = lambda d : (d('velx')*d('x')+d('vely')*d('y')+d('velz')*d('z'))/d('r')
+        self.data_func['velR'] =  lambda d : (d('x')*d('velx')+d('y')*d('vely'))/d('R')
         self.data_func['vtheta'] = lambda d : (d('z')*d('velr')-d('r')*d('velz'))/d('R')
-        self.data_func['vphi'] = lambda d : (d('x')*d('vely')-d('y')*d('velx'))/d('r')
+        self.data_func['vphi'] = lambda d : (d('x')*d('vely')-d('y')*d('velx'))/d('R')
         self.data_func['momr'] = lambda d : d('dens')*d('velr')
         self.data_func['velrin'] = lambda d : xp.minimum(d('velr'),0.0)
         self.data_func['velrout'] = lambda d : xp.maximum(d('velr'),0.0)
@@ -290,8 +291,9 @@ class AthenaData:
         self.data_func['bccy'] = lambda d : d('bcc2')
         self.data_func['bccz'] = lambda d : d('bcc3')
         self.data_func['bccr'] = lambda d : (d('bccx')*d('x')+d('bccy')*d('y')+d('bccz')*d('z'))/d('r')
+        self.data_func['bccR'] = lambda d : (d('x')*d('bccx')+d('y')*d('bccy'))/d('R')
         self.data_func['btheta'] = lambda d : (d('z')*d('bccr')-d('r')*d('bccz'))/d('R')
-        self.data_func['bphi'] = lambda d : (d('x')*d('bccy')-d('y')*d('bccx'))/d('r')
+        self.data_func['bphi'] = lambda d : (d('x')*d('bccy')-d('y')*d('bccx'))/d('R')
         self.data_func['btot^2'] = lambda d : d('bccx')**2+d('bccy')**2+d('bccz')**2
         self.data_func['btot'] = lambda d : xp.sqrt(d('btot^2'))
         self.data_func['brot'] = lambda d : xp.sqrt(d('btot^2')-d('bccr')**2)
@@ -738,9 +740,6 @@ class AthenaData:
     ### get data in a dictionary ###
     def histogram(self,*args,**kwargs):
         hists = self._histograms(*args,**kwargs)
-        for k in hists.keys():
-            hists[k]['edges'] = list(hists[k]['edges'])[0]
-            hists[k]['centers'] = list(hists[k]['centers'])[0]
         return hists
     def histogram2d(self,*args,**kwargs):
         return self._histograms(*args,**kwargs)
