@@ -858,6 +858,13 @@ class AthenaData:
     #def slice(self,var='dens',normal='z',north='y',center=[0.,0.,0.],width=1,height=1,zoom=0,level=0):
     #    return
 
+    def _figax(self,fig=None,ax=None,dpi=200):
+        if (ax is not None): fig = ax.get_figure()
+        else: 
+            fig = plt.figure(dpi=dpi) if fig is None else fig
+            ax = fig.axes[0] if len(fig.axes)>0 else plt.axes()
+        return fig,ax
+
     # TODO(@mhguo): remove later when the new version is stable, or as a alias of plot_slice
     def plot_snapshot_old(self,var='dens',data=None,varname='',zoom=0,level=0,xyz=[],unit=1.0,\
                    title='',label='',xlabel='X',ylabel='Y',cmap='viridis',aspect='equal',shading='nearest',\
@@ -865,8 +872,7 @@ class AthenaData:
                    savepath='',savelabel='',figlabel='',dpi=200,vec=None,stream=None,circle=True,\
                    fig=None,ax=None,xyunit=1.0,colorbar=True,returnall=False,stream_color='k',stream_linewidth=None,\
                    stream_arrowsize=None,vecx='velx',vecy='vely',vel_method='ave',axis=0,**kwargs):
-        fig=plt.figure(dpi=dpi) if fig is None else fig
-        ax = plt.axes() if ax is None else ax
+        fig,ax = self._figax(fig,ax,dpi)
         varname = var+f'_{zoom}' if not varname else varname
         if (not xyz):
             xyz = [self.x1min/2**zoom,self.x1max/2**zoom,
@@ -960,8 +966,7 @@ class AthenaData:
                    cmap='viridis',norm='log',save=False,figfolder=None,figlabel='',figname='',\
                    dpi=200,fig=None,ax=None,colorbar=True,returnall=False,aspect='auto',\
                    xticks=None,yticks=None,xticklabels=None,yticklabels=None, **kwargs):
-        fig = plt.figure(dpi=dpi) if fig is None else fig
-        ax = plt.axes() if ax is None else ax
+        fig,ax = self._figax(fig,ax,dpi)
         img = asnumpy(img[:,:])
         #print(x,y,img)
         im=ax.pcolormesh(x,y,img,norm=norm,cmap=cmap,**kwargs)
@@ -991,15 +996,15 @@ class AthenaData:
 
     def plot_stream(self,dpi=200,fig=None,ax=None,x=None,y=None,u=None,v=None,
                     xyunit=1.0,color='k',linewidth=None,arrowsize=None):
-        fig=plt.figure(dpi=dpi) if fig is None else fig
+        ax = plt.axes() if ax is None else ax
+        fig = ax.get_figure() if fig is None else fig
         ax.streamplot(x*xyunit, y*xyunit, u, v, color=color,linewidth=linewidth,arrowsize=arrowsize)
         return fig
 
     def plot_phase(self,varname='dens,temp',key='vol',bins=128,weights='vol',where=None,title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
                    unit=1.0,cmap='viridis',norm='log',extent=None,density=False,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
                    figpath='',x=None,y=None,xshift=0.0,xunit=1.0,yshift=0.0,yunit=1.0,fig=None,ax=None,dpi=128,**kwargs):
-        fig=plt.figure(dpi=dpi) if fig is None else fig
-        ax = plt.axes() if ax is None else ax
+        fig,ax = self._figax(fig,ax,dpi)
         #print(key,varname)
         try:
             dat = self.hists[key][varname]
@@ -1040,8 +1045,7 @@ class AthenaData:
                    savepath='',savelabel='',figlabel='',dpi=200,vec=None,stream=None,circle=True,\
                    fig=None,ax=None,xyunit=1.0,colorbar=True,returnall=False,stream_color='k',stream_linewidth=1.0,\
                    stream_arrowsize=1.0,vecx='velx',vecy='vely',vel_method='ave',aspect='equal',**kwargs):
-        fig = plt.figure(dpi=dpi) if fig is None else fig
-        ax = plt.axes() if ax is None else ax
+        fig,ax = self._figax(fig,ax,dpi)
         bins=int(xp.min(xp.asarray([self.Nx1,self.Nx2,self.Nx3]))) if not bins else bins
         if var in self.slices[key].keys():
             slc = self.slices[key][var]
@@ -1091,8 +1095,7 @@ class AthenaData:
                    xlabel=None,ylabel=None,title='',label='',colorbar=True,
                    quiver_para=dict(),stream_para={},
                    returnall=False,**kwargs):
-        fig=plt.figure(dpi=dpi) if fig is None else fig
-        ax = plt.axes() if ax is None else ax
+        fig,ax = self._figax(fig,ax,dpi)
         x,y,c,u,v = self.get_slice_for_plot(var=var,key=key,vec=vec,stream=stream,vecx=vecx,vecy=vecy,
                                             zoom=zoom,level=level,xyz=xyz,unit=unit,xyunit=xyunit,axis=axis)
         quiver,strm = None,None
@@ -1116,8 +1119,7 @@ class AthenaData:
         return fig
 
     def plot_profile(self,var='r,dens',unit=1.0,xunit=1.0,bins=256,weights='vol',fig=None,ax=None,dpi=200,xscale='log',yscale='log',xlabel='X',ylabel='Y',returnall=False,**kwargs):
-        fig=plt.figure(dpi=dpi) if fig is None else fig
-        ax = plt.axes() if ax is None else ax
+        fig,ax = self._figax(fig,ax,dpi)
         binv, v = var.split(',')
         try:
             prof = self.profs[binv]
