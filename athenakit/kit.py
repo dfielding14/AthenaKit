@@ -434,8 +434,10 @@ def subplots(nrows=2,ncols=2,figsize=(7.2,5.0),dpi=120,sharex=False,squeeze=Fals
         ax.tick_params(bottom=True,top=True,left=True,right=True,which='both',direction="in")
     return fig,axes
 def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
+    if (type(cmap) is str):
+        cmap = plt.get_cmap(cmap)
     new_cmap = clr.LinearSegmentedColormap.from_list(
-        'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=minval, b=maxval),
+        f'trunc({cmap.name},{minval:.2f},{maxval:.2f})',
         cmap(np.linspace(minval, maxval, n)))
     return new_cmap
 

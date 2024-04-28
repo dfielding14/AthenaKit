@@ -842,6 +842,8 @@ class AthenaData:
         return asnumpy({var:xp.average(self.data(var,dtype='uniform',level=level,xyz=xyz),axis=axis)})
     
     def get_slice(self,varl,**kwargs):
+        if (type(varl) is str):
+            varl = [varl]
         slices = {}
         slices['edges'] = self.get_slice_faces(**kwargs)
         slices['centers'] = self.get_slice_centers(**kwargs)
@@ -895,8 +897,8 @@ class AthenaData:
             fig.savefig(f"{figfolder}/fig_{figlabel}_{self.num:04d}.png"\
                         if not figname else figname, bbox_inches='tight')
         if (returnall):
-            return fig,im
-        return fig
+            return fig,ax,im
+        return im
 
     def plot_stream(self,dpi=200,fig=None,ax=None,x=None,y=None,u=None,v=None,
                     xyunit=1.0,color='k',linewidth=None,arrowsize=None):
@@ -926,8 +928,8 @@ class AthenaData:
         im_arr = im_arr.T*unit
         x =  x*xunit+xshift
         y =  y*yunit+yshift
-        fig,im=self.plot_image(x,y,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,xscale=xscale,yscale=yscale,\
-                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=varname,figname=savepath,fig=fig,ax=ax,returnall=True,**kwargs)
+        im=self.plot_image(x,y,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,xscale=xscale,yscale=yscale,\
+                    cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=varname,figname=savepath,fig=fig,ax=ax,**kwargs)
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
         if (colorbar):
             from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -962,8 +964,8 @@ class AthenaData:
         if (stream):
             u,v = self.slices[key][vecx].T,self.slices[key][vecy].T
             ax.streamplot(xc*xyunit, yc*xyunit, u, v,color=stream_color,linewidth=stream_linewidth,arrowsize=stream_arrowsize)
-        fig,im=self.plot_image(x*xyunit,y*xyunit,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,aspect=aspect,\
-                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=var,figname=savepath,fig=fig,ax=ax,returnall=True,**kwargs)
+        im=self.plot_image(x*xyunit,y*xyunit,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,aspect=aspect,\
+                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=var,figname=savepath,fig=fig,ax=ax,**kwargs)
         if (vec):
             u,v = self.slices[key][vecx].T,self.slices[key][vecy].T
             ax.quiver(xc*xyunit, yc*xyunit, u, v)
@@ -1010,9 +1012,9 @@ class AthenaData:
             strm_para.update(stream_para)
             strm = ax.streamplot(x,y,u,v,**strm_para)
         #im=ax.pcolormesh(x,y,c,norm=norm,cmap=cmap,shading=shading,**kwargs)
-        fig,im = self.plot_image(x,y,c,fig=fig,ax=ax,dpi=dpi,norm=norm,cmap=cmap,aspect=aspect,
+        im = self.plot_image(x,y,c,fig=fig,ax=ax,dpi=dpi,norm=norm,cmap=cmap,aspect=aspect,
                                  xlabel=xlabel,ylabel=ylabel,title=title,label=label,
-                                 colorbar=colorbar,returnall=True,**kwargs)
+                                 colorbar=colorbar,**kwargs)
         if (colorbar):
             from mpl_toolkits.axes_grid1 import make_axes_locatable
             divider = make_axes_locatable(ax)

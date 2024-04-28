@@ -279,6 +279,7 @@ def add_data(ad,add_bcc=True):
     #ad.add_data_func('Be_r', lambda d : (d('ekin')+d('pgas')/(d.ad.gamma-1.0)+d('Poyt_r')/d('vtot'))/d('dens')+d('potential'))
     ad.add_data_func('Be', lambda d : (d('etot')+d('ptot')-d('bdotv')**2/d('vtot^2'))/d('dens')+d('potential'))
     ad.add_data_func('tran_Be_p', lambda d : (d('etot')+d('ptot')-d('bdotv')*d('tran_bpdotvp')/d('tran_velp^2'))/d('dens')+d('potential'))
+    ad.add_data_func('eaflx', lambda d : ((d('etot')+d('ptot')+d('dens')*d('potential'))*d('velr')-d('bccr')*d('bdotv')))
 
     '''
     for var in ['mdot','mdotin','mdotout','momdot','momdotin','momdotout','eidot','eidotin','eidotout','ekdot','ekdotin','ekdotout']:
@@ -287,11 +288,25 @@ def add_data(ad,add_bcc=True):
         ad.add_data_func(var+'_warm', lambda d, var=var : d(var)*(d('temp')>=d.ad.header('problem','t_cold',float))*(d('temp')<d('t_hot')))
         ad.add_data_func(var+'_hot', lambda d, var=var : d(var)*(d('temp')>=d('t_hot')))
     '''
-    for key,inte in zip(['mdot','momdot','eidot','ekdot','edot'],
-                        ['dens','momr',  'eint', 'ekin', 'etot']):
-        for direc in ['','in','out']:
+
+    ad.add_data_func('inflow', lambda d : d('velr')<0.0)
+    ad.add_data_func('outflow', lambda d : d('velr')>0.0)
+    for key,inte in zip(['mdot', 'momdot', 'eidot', 'ekdot', 'edot', 'eadot'],
+                        ['dens*velr', 'momr*velr', 'eint*velr', 'ekin*velr', 'etot*velr', 'eaflx']):
+        for direc,dirvar in zip(['','in','out'],['ones','inflow','outflow']):
             var = key+direc
-            ad.add_data_func(var, lambda d, inte=inte, direc=direc : 4.0*xp.pi*d('r')**2*d(inte)*d('velr'+direc))
+            ad.add_data_func(var, lambda d, inte=inte, dirvar=dirvar : 4.0*xp.pi*d('r')**2*d(inte)*d(dirvar))
+            ad.add_data_func(var+'_cold', lambda d, var=var : d(var)*(d('temp')<d.ad.header('problem','t_cold',float)))
+            ad.add_data_func(var+'_warm', lambda d, var=var : d(var)*(d('temp')>=d.ad.header('problem','t_cold',float))*(d('temp')<d('t_hot')))
+            ad.add_data_func(var+'_hot', lambda d, var=var : d(var)*(d('temp')>=d('t_hot')))
+
+    ad.add_data_func('eaflxp', lambda d : d('eaflx')*(d('eaflx')>0.0))
+    ad.add_data_func('eaflxm', lambda d : d('eaflx')*(d('eaflx')<0.0))
+    ad.add_data_func('eadotp', lambda d : 4.0*xp.pi*d('r')**2*d('eaflxp'))
+    ad.add_data_func('eadotm', lambda d : 4.0*xp.pi*d('r')**2*d('eaflxm'))
+    for key in ['eaflx','eadot']:
+        for direc in ['p','m']:
+            var = key+direc
             ad.add_data_func(var+'_cold', lambda d, var=var : d(var)*(d('temp')<d.ad.header('problem','t_cold',float)))
             ad.add_data_func(var+'_warm', lambda d, var=var : d(var)*(d('temp')>=d.ad.header('problem','t_cold',float))*(d('temp')<d('t_hot')))
             ad.add_data_func(var+'_hot', lambda d, var=var : d(var)*(d('temp')>=d('t_hot')))
