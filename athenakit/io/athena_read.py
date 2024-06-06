@@ -4,7 +4,7 @@ import re
 ### Read files ###
 
 # Read .hst files and return dict of 1D arrays.
-def hst(filename, *args, **kwargs):
+def hst(filename, raw=False, *args, **kwargs):
     data = {}
     with open(filename, 'r') as data_file:
         line = data_file.readline()
@@ -16,9 +16,11 @@ def hst(filename, *args, **kwargs):
             raise RuntimeError('Could not parse header')
     # Read data
     arr=np.loadtxt(filename, *args, **kwargs).T
-    # Make time monotonic increasing
-    mono=np.minimum.accumulate(arr[0][::-1])[::-1]
-    locs=np.append(mono[:-1]<mono[1:],True)
+    locs=np.ones(arr[0].shape,dtype=bool)
+    if (not raw):
+        # Make time monotonic increasing
+        mono=np.minimum.accumulate(arr[0][::-1])[::-1]
+        locs=np.append(mono[:-1]<mono[1:],True)
     # Make dictionary of results
     for i,name in enumerate(data_names):
         data[name]=arr[i][locs]
