@@ -1,6 +1,6 @@
-from . import macros
+from . import global_vars
 import numpy as np
-if (macros.mpi_enabled):
+if (global_vars.mpi_enabled):
     from mpi4py import MPI
 
     def Allreduce(arr,op=MPI.SUM,mpitype=None,**kwargs):

@@ -1,8 +1,8 @@
 import os
 from time import sleep
 import numpy as np
-from . import macros
-if (macros.cupy_enabled):
+from . import global_vars
+if (global_vars.cupy_enabled):
     import cupy as xp
 else:
     xp = np

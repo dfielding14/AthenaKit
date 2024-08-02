@@ -2,7 +2,7 @@ __all__ = [
         'athena_data',
         'io',
         'kit',
-        'macros',
+        'global_vars',
         'physics',
         'units'
         'utils',
@@ -14,4 +14,4 @@ from .units import *
 from .utils import *
 from .athena_data import *
 from .kit import *
-from . import macros
+from . import global_vars

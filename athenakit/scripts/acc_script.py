@@ -524,11 +524,11 @@ if __name__ == "__main__":
     pklpath=data_path+'pkl/'
     figpath=data_path+'fig/'
     videopath=data_path+'video/'
-    if (ak.macros.rank==0):
+    if (ak.global_vars.rank==0):
         for path in [athdfpath,pklpath,figpath]:
             if not os.path.isdir(path):
                 os.mkdir(path)
-    if (ak.macros.mpi_enabled):
+    if (ak.global_vars.mpi_enabled):
         ak.mpi.MPI.COMM_WORLD.Barrier()
     # get numlist
     numlist=[]
@@ -576,7 +576,7 @@ if __name__ == "__main__":
                     ad.load(filename)
                 print(f'updating i={i}')
                 adupdate(ad).save(pklpath+f'/Base.{ad.num:05d}.pkl')
-            if ('p' in task and ak.macros.rank==0):
+            if ('p' in task and ak.global_vars.rank==0):
                 print(f'loading pkl i={i}')
                 filename=pklpath+f'/Base.{i:05d}.pkl'
                 ad.load(filename)
@@ -595,7 +595,7 @@ if __name__ == "__main__":
             for n in numlist:run(n)
         else:
             with mp.Pool(args.nprocess) as p:p.map(run,numlist)
-    if ('f' in task and ak.macros.rank==0):
+    if ('f' in task and ak.global_vars.rank==0):
         numlist=[]
         for file in sorted(os.listdir(pklpath)):
             if file.endswith('.pkl'):
@@ -616,7 +616,7 @@ if __name__ == "__main__":
             for i in numlist: plot(i)
         else:
             with mp.Pool(args.nprocess) as p:p.map(plot,numlist)
-    if ('v' in task and ak.macros.rank==0):
+    if ('v' in task and ak.global_vars.rank==0):
         for label in ['image_x','image_y','image_z','phase_0','radial_0',]:
             make_video(figlabel='fig_'+label,videolabel='video_'+label,figdir=figpath,videodir=videopath,duration=0.05,fps=20)
     '''

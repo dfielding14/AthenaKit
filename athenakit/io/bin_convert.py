@@ -87,7 +87,7 @@ The read_*(...) functions return a filedata dictionary-like object with
 import numpy as np
 import struct
 import h5py
-from .. import macros
+from .. import global_vars
 
 def read_binary(filename):
     """
@@ -196,8 +196,8 @@ def read_binary(filename):
         mb_data[var] = []
 
     # assuming all meshblocks are the same size
-    if (macros.mpi_enabled):
-        rank, size = macros.rank, macros.size
+    if (global_vars.mpi_enabled):
+        rank, size = global_vars.rank, global_vars.size
         data_offset = fp.tell()
         while fp.tell() < filesize:
             mb_index.append(np.array(struct.unpack('@6i', fp.read(24))) - nghost)
@@ -301,7 +301,7 @@ def write_athdf(filename, fdata, varsize_bytes=4, locsize_bytes=8):
     varfmt = '<f4' if varsize_bytes == 4 else '<f8'
 
     # TODO(@mhguo): note MPI is not tested due to lack of parallel-enabled hdf5 library
-    if (macros.mpi_enabled):
+    if (global_vars.mpi_enabled):
         raise NotImplementedError('MPI is not implemented for write_athdf')
 
     # extract Mesh/MeshBlock parameters
@@ -389,8 +389,8 @@ def write_athdf(filename, fdata, varsize_bytes=4, locsize_bytes=8):
         dataset_nvars.append(len(vars_only_b))
 
     # Set Attributes
-    if (macros.mpi_enabled):
-        hfp = h5py.File(filename, 'w', driver='mpio', comm=macros.MPI.COMM_WORLD)
+    if (global_vars.mpi_enabled):
+        hfp = h5py.File(filename, 'w', driver='mpio', comm=global_vars.MPI.COMM_WORLD)
     else:
         hfp = h5py.File(filename, 'w')
     hfp.attrs['Header'] = fdata['header']
@@ -412,16 +412,16 @@ def write_athdf(filename, fdata, varsize_bytes=4, locsize_bytes=8):
 
     # Create Datasets
     if len(vars_only_b) > 0:
-        if (macros.mpi_enabled):
+        if (global_vars.mpi_enabled):
             dset = hfp.create_dataset('B', dtype=varfmt)
-            dset[macros.rank] = B
+            dset[global_vars.rank] = B
         else:
             hfp.create_dataset('B', data=B, dtype=varfmt)
     hfp.create_dataset('Levels', data=Levels, dtype='>i4')
     hfp.create_dataset('LogicalLocations', data=LogicalLocations, dtype='>i8')
-    if (macros.mpi_enabled):
+    if (global_vars.mpi_enabled):
         dset = hfp.create_dataset('uov', dtype=varfmt)
-        dset[macros.rank] = uov
+        dset[global_vars.rank] = uov
     else:
         hfp.create_dataset('uov', data=uov, dtype=varfmt)
     hfp.create_dataset('x1f', data=x1f, dtype=locfmt)

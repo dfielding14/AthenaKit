@@ -10,13 +10,13 @@ from matplotlib import pyplot as plt
 
 from .io import read_binary
 from .utils import save_dict_to_hdf5, load_dict_from_hdf5
-from . import macros
-if (macros.cupy_enabled):
+from . import global_vars
+if (global_vars.cupy_enabled):
     import cupy as xp
     xp.cuda.set_allocator(xp.cuda.MemoryPool().malloc)
 else:
     xp = np
-if (macros.mpi_enabled):
+if (global_vars.mpi_enabled):
     from . import mpi
 
 def load(filename):
@@ -29,7 +29,7 @@ def asnumpy(arr):
         return {k:asnumpy(v) for k,v in arr.items()}
     if (type(arr) is list):
         return [asnumpy(a) for a in arr]
-    if (macros.cupy_enabled):
+    if (global_vars.cupy_enabled):
         return (xp.asnumpy(arr)).astype(float)
     else:
         return arr
@@ -78,7 +78,7 @@ class AthenaData:
     def save(self,filename,except_keys=[],
              default_except_keys=['binary', 'h5file', 'h5dic', 'coord', 'data_raw', 'data_func', 'mb_list'],
              **kwargs):
-        if (macros.rank!=0): return
+        if (global_vars.rank!=0): return
         dic={}
         for k,v in self.__dict__.items():
             if (k not in except_keys+default_except_keys and not callable(v)):
@@ -145,7 +145,7 @@ class AthenaData:
         self.n_mbs = self.h5file.attrs['NumMeshBlocks']
         # @mhguo: using numpy here because cupy would be very slow when
         # accessing mb_logical and mb_geometry later (in _data_raw_uniform())
-        rank, size = macros.rank, macros.size
+        rank, size = global_vars.rank, global_vars.size
         my_mb_beg = rank * self.n_mbs // size + min(rank, self.n_mbs % size)
         my_mb_end = my_mb_beg + self.n_mbs // size + (rank < self.n_mbs % size)
         self.mb_list = np.arange(my_mb_beg, my_mb_end)
@@ -548,7 +548,7 @@ class AthenaData:
                                                                 il_s+io:iu_s:s]\
                                                                 /(s**num_extended_dims)
         # TODO(@mhguo): may change to device-to-device communication in the future
-        if (macros.mpi_enabled):
+        if (global_vars.mpi_enabled):
             # TODO(@mhguo): assuming the mesh blocks are not overlapped
             return xp.asarray(mpi.sum(np.ascontiguousarray(asnumpy(data))))
         return data
@@ -566,13 +566,13 @@ class AthenaData:
         arr = asnumpy(xp.sum((self.data(var)*self.data(weights))[where],**kwargs))
         # TODO(@mhguo): make a better type conversion
         #print(var, arr, arr.dtype)
-        if (macros.mpi_enabled):
+        if (global_vars.mpi_enabled):
             arr = np.array(float(arr))
             arr = mpi.sum(np.ascontiguousarray(arr))
             arr = float(arr)
         return arr
     def average(self,var,weights='ones',where=None,**kwargs):
-        if (macros.mpi_enabled):
+        if (global_vars.mpi_enabled):
             raise NotImplementedError("average with MPI is not supported yet")
         return asnumpy(xp.average(self.data(var)[where],weights=self.data(weights)[where],**kwargs))
 
@@ -612,7 +612,7 @@ class AthenaData:
                         warnings.warn(f"Warning: no bins for {var}, using linspace(0,1) instead")
                         return xp.linspace(0.0,1.0,bins+1)
                     dmin,dmax = asnumpy(dat.min()),asnumpy(dat.max())
-                    if (macros.mpi_enabled): dmin, dmax = mpi.min(dmin), mpi.max(dmax)
+                    if (global_vars.mpi_enabled): dmin, dmax = mpi.min(dmin), mpi.max(dmax)
                     return xp.linspace(float(dmin),float(dmax),bins+1)
                 else:
                     return xp.linspace(range[0],range[1],bins+1)
@@ -626,7 +626,7 @@ class AthenaData:
                         return xp.logspace(0.0,1.0,bins+1)
                     else:
                         dmin,dmax = asnumpy(dat.min()),asnumpy(dat.max())
-                        if (macros.mpi_enabled): dmin, dmax = mpi.min(dmin), mpi.max(dmax)
+                        if (global_vars.mpi_enabled): dmin, dmax = mpi.min(dmin), mpi.max(dmax)
                         return xp.logspace(xp.log10(float(dmin)),xp.log10(float(dmax)),bins+1)
                 else:
                     return xp.logspace(xp.log10(range[0]),xp.log10(range[1]),bins+1)
@@ -677,7 +677,7 @@ class AthenaData:
             hists[histname] = {'dat':xp.asarray(hist[0]),'edges':{v:_ for v,_ in zip(varl,hist[1])}}
             hists[histname]['centers'] = {v:(hists[histname]['edges'][v][:-1]+hists[histname]['edges'][v][1:])/2 for v in varl}
         hists = asnumpy(hists)
-        if (macros.mpi_enabled):
+        if (global_vars.mpi_enabled):
             for k in hists.keys():
                 hists[k]['dat'] = mpi.sum(np.ascontiguousarray(hists[k]['dat']))
         return hists
@@ -730,7 +730,7 @@ class AthenaData:
                 data_weights = data(self,var)[where].ravel()*weights
             profs[var] = xp.histogramdd(bin_arr,bins=bins,weights=data_weights,**kwargs)[0]
         profs = asnumpy(profs)
-        if (macros.mpi_enabled):
+        if (global_vars.mpi_enabled):
             for k in varl+['norm',]:
                 profs[k] = mpi.sum(np.ascontiguousarray(profs[k]))
         for k in varl:

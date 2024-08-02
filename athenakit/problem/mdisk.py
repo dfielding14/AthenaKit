@@ -5,14 +5,14 @@ try:
 except:
     import numpy as xp
 from numpy.linalg import inv
-from .. import units
+from .. import global_vars, units
 from .. import kit
 from ..athena_data import asnumpy
-from .. import macros, mpi
+from .. import mpi
 
 def add_tools(ad):
     ad.rmin = asnumpy(np.min(ad.data('r').min()))
-    if (macros.mpi_enabled): ad.rmin = mpi.min(ad.rmin)
+    if (global_vars.mpi_enabled): ad.rmin = mpi.min(ad.rmin)
     ad.rmin = float(ad.rmin)
     ad.rmax = float(np.min(np.abs([ad.x1min,ad.x1max,ad.x2min,ad.x2max,ad.x3min,ad.x3max])))  
 
