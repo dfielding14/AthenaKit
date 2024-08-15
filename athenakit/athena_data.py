@@ -19,9 +19,9 @@ else:
 if (global_vars.mpi_enabled):
     from . import mpi
 
-def load(filename):
+def load(filename,**kwargs):
     ad = AthenaData(filename)
-    ad.load(filename,config=True)
+    ad.load(filename,**kwargs)
     return ad
 
 def asnumpy(arr):
