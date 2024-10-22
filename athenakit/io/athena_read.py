@@ -5,7 +5,7 @@ import warnings
 ### Read files ###
 
 # Read .hst files and return dict of 1D arrays.
-def hst(filename, raw=False, *args, **kwargs):
+def hst(filename, raw=False, strict=False, *args, **kwargs):
     data = {}
     with open(filename, 'r') as data_file:
         line = data_file.readline()
@@ -25,7 +25,15 @@ def hst(filename, raw=False, *args, **kwargs):
     if (not raw):
         # Make time monotonic increasing
         mono=np.minimum.accumulate(arr[0][::-1])[::-1]
-        locs=np.append(mono[:-1]<mono[1:],True)
+        if (strict):
+            locs=np.append(mono[:-1]<mono[1:],True)
+        else:
+            tnow=arr[0][-1]
+            for i in range(len(arr[0])-1,-1,-1):
+                if (arr[0][i] > tnow):
+                    locs[i] = False
+                else:
+                    tnow = arr[0][i]
     # Make dictionary of results
     for i,name in enumerate(data_names):
         data[name]=arr[i][locs]
