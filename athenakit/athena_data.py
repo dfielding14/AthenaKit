@@ -332,9 +332,13 @@ class AthenaData:
                 return self.data_func[var](data)
             elif (var.isidentifier()):
                 raise ValueError(f"No variable callled '{var}' ")
-            # evaluate the math expression
+            # math expression
             else:
-                return eval_expr(var,lambda v:self.data(v,**kwargs))
+                # Replace '^' with '**' for exponentiation
+                # The reason is we never use '^' for XOR in math but we may need to change it
+                expr = var.replace('^', '**')
+                # Evaluate the expression
+                return eval_expr(expr,lambda v:self.data(v,**kwargs))
         elif (type(var) in [list,tuple]):
             return [self.data(v,**kwargs) for v in var]
         elif (type(var) in [int,float,xp.ndarray]):

@@ -27,10 +27,6 @@ def eval_expr(expr, func):
     Raises:
         TypeError: If the expression contains unsupported operations.
     """
-    # Replace '^' with '**' for exponentiation 
-    # This is because we never use '^' for XOR in math but it may need to be changed
-    expr = expr.replace('^', '**')
-
     def _eval(node):
         if isinstance(node, ast.Num):  # <number>
             return node.n
