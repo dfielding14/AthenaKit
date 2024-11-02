@@ -9,7 +9,7 @@ from packaging.version import parse as version_parse
 from matplotlib import pyplot as plt
 
 from .io import read_binary
-from .utils import save_dict_to_hdf5, load_dict_from_hdf5
+from .utils import eval_expr, save_dict_to_hdf5, load_dict_from_hdf5
 from . import global_vars
 if (global_vars.cupy_enabled):
     import cupy as xp
@@ -330,31 +330,17 @@ class AthenaData:
                 data.ad = self
                 data.kwargs = kwargs
                 return self.data_func[var](data)
+            elif (var.isidentifier()):
+                raise ValueError(f"No variable callled '{var}' ")
+            # evaluate the math expression
             else:
-                # evaluate math expression in the string
-                # TODO(@mhguo): this is a very naive implementation, make it more robust
-                def numeric(expr):
-                    if ('-' in expr):
-                        return numeric(expr.rpartition('-')[0] if (expr.rpartition('-')[0]!='') else '0')-numeric(expr.rpartition('-')[2])
-                    if ('+' in expr):
-                        return numeric(expr.rpartition('+')[0] if (expr.rpartition('+')[0]!='') else '0')+numeric(expr.rpartition('+')[2])
-                    if ('/' in expr):
-                        return numeric(expr.rpartition('/')[0])/numeric(expr.rpartition('/')[2])
-                    if ('*' in expr):
-                        return numeric(expr.rpartition('*')[0])*numeric(expr.rpartition('*')[2])
-                    if ('^' in expr):
-                        return numeric(expr.rpartition('^')[0])**numeric(expr.rpartition('^')[2])
-                    if (expr in self.data_list):
-                        return self.data(expr,**kwargs)
-                    return float(expr)
-                return numeric(var)
-            #raise ValueError(f"No variable callled '{var}' ")
+                return eval_expr(var,lambda v:self.data(v,**kwargs))
         elif (type(var) in [list,tuple]):
             return [self.data(v,**kwargs) for v in var]
-        else: 
+        elif (type(var) in [int,float,xp.ndarray]):
             return var # the variable itself, useful to interface with other functions
-        # else:
-        #     raise ValueError(f"var '{var}' not supported")
+        else:
+            raise ValueError(f"var '{var}' not supported")
 
     # an alias for data
     def d(self,var,**kwargs):
@@ -908,7 +894,7 @@ class AthenaData:
         return fig
 
     def plot_phase(self,varname='dens,temp',key='vol',bins=128,weights='vol',where=None,title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
-                   unit=1.0,cmap='viridis',norm='log',extent=None,density=False,save=False,colorbar=True,savepath='',figdir='../figure/Simu_',\
+                   unit=1.0,cmap='viridis',norm='log',extent=None,density=False,save=False,savepath='',figdir='../figure/Simu_',\
                    figpath='',x=None,y=None,xshift=0.0,xunit=1.0,yshift=0.0,yunit=1.0,fig=None,ax=None,dpi=128,**kwargs):
         fig,ax = self._figax(fig,ax,dpi)
         #print(key,varname)
@@ -931,11 +917,6 @@ class AthenaData:
         im=self.plot_image(x,y,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,xscale=xscale,yscale=yscale,\
                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=varname,figname=savepath,fig=fig,ax=ax,**kwargs)
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
-        if (colorbar):
-            from mpl_toolkits.axes_grid1 import make_axes_locatable
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="4%", pad=0.02)
-            fig.colorbar(im,ax=ax,cax=cax, orientation='vertical',label=label)
         if (save):
             figpath=figdir+Path(self.path).parts[-1]+'/'+self.label+"/" if not figpath else figpath
             if not os.path.isdir(figpath):
@@ -1039,6 +1020,12 @@ class AthenaData:
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         return fig
+
+    def plot(self,**kwargs):
+        return self.plot_profile(**kwargs)
+
+    def plot_hist2d(self,**kwargs):
+        return self.plot_phase(**kwargs)
 
 class AthenaDataSet:
     def __init__(self,version='1.0'):
