@@ -893,16 +893,15 @@ class AthenaData:
         ax.streamplot(x*xyunit, y*xyunit, u, v, color=color,linewidth=linewidth,arrowsize=arrowsize)
         return fig
 
-    def plot_phase(self,varname='dens,temp',key='vol',bins=128,weights='vol',where=None,title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
+    def plot_phase(self,var='dens,temp',key='vol',bins=128,weights='vol',where=None,title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
                    unit=1.0,cmap='viridis',norm='log',extent=None,density=False,save=False,savepath='',figdir='../figure/Simu_',\
                    figpath='',x=None,y=None,xshift=0.0,xunit=1.0,yshift=0.0,yunit=1.0,fig=None,ax=None,dpi=128,**kwargs):
         fig,ax = self._figax(fig,ax,dpi)
-        #print(key,varname)
         try:
-            dat = self.hists[key][varname]
+            dat = self.hists[key][var]
         except:
-            varl = varname.split(',') if ',' in varname else varname.split('-')
-            dat = self.get_hist2d([varl],bins=bins,scales=[[xscale,yscale]],weights=weights,where=where)[varname]
+            varl = var.split(',') if ',' in var else var.split('-')
+            dat = self.get_hist2d([varl],bins=bins,scales=[[xscale,yscale]],weights=weights,where=where)[var]
         x,y = dat['edges'].values()
         im_arr = asnumpy(dat['dat'])
         extent = [x.min(),x.max(),y.min(),y.max()] if extent is None else extent
@@ -915,13 +914,13 @@ class AthenaData:
         x =  x*xunit+xshift
         y =  y*yunit+yshift
         im=self.plot_image(x,y,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,xscale=xscale,yscale=yscale,\
-                    cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=varname,figname=savepath,fig=fig,ax=ax,**kwargs)
+                    cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=var,figname=savepath,fig=fig,ax=ax,**kwargs)
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)
         if (save):
             figpath=figdir+Path(self.path).parts[-1]+'/'+self.label+"/" if not figpath else figpath
             if not os.path.isdir(figpath):
                 os.mkdir(figpath)
-            fig.savefig(f"{figpath}fig_{varname}_{self.num:04d}.png"\
+            fig.savefig(f"{figpath}fig_{var}_{self.num:04d}.png"\
                         if not savepath else savepath, bbox_inches='tight')
         return fig
     
@@ -1021,11 +1020,11 @@ class AthenaData:
         ax.set_ylabel(ylabel)
         return fig
 
-    def plot(self,**kwargs):
-        return self.plot_profile(**kwargs)
+    def plot(self,*args,**kwargs):
+        return self.plot_profile(*args,**kwargs)
 
-    def plot_hist2d(self,**kwargs):
-        return self.plot_phase(**kwargs)
+    def plot_hist2d(self,*args,**kwargs):
+        return self.plot_phase(*args,**kwargs)
 
 class AthenaDataSet:
     def __init__(self,version='1.0'):
