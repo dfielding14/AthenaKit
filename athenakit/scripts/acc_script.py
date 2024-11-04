@@ -22,8 +22,9 @@ import multiprocessing as mp
 from pathlib import Path
 
 sys.path.append('/u/mguo/Git')
-import athenaresearch.athenakit as ak
-from athenaresearch.athenakit.problem import acc
+import athenakit.athenakit as ak
+from athenakit.athenakit import units
+from athenakit.athenakit.problem import acc
 plt.style.use('~/Git/pykit/pykit/mplstyle/mg')
 
 # TODO(@mhguo): seperate work and plot onto gpu and cpu respectively!
@@ -252,7 +253,8 @@ def adplot(ad,zlist=None,dlevel=1):
     figdir=ad.figpath
     unit=ad.unit
     ran=ad.rad_initial
-    lunit,tunit,munit,vunit=unit.length_cgs/ak.pc_cgs,unit.time_cgs/ak.kyr_cgs,unit.mass_cgs/ak.msun_cgs,unit.velocity_cgs/ak.km_s_cgs
+    lunit,tunit = unit.length_cgs/units.pc_cgs,unit.time_cgs/units.kyr_cgs
+    munit,vunit = unit.mass_cgs/units.msun_cgs,unit.velocity_cgs/units.km_s_cgs
     lunit=1.0 # for GR
     Tunit,mdot_unit,magnetic_unit=unit.temperature_cgs,unit.mdot_msun_yr,unit.magnetic_field_cgs/1e-6
     #'''
@@ -289,7 +291,7 @@ def adplot(ad,zlist=None,dlevel=1):
             title=None,aspect='equal',yticklabels=[])
         ad.plot_slice(fig=fig,ax=axes[3,i],var='vtot',key=f'x_{j}',axis='x',save=False,label=r'$|v|\rm\,[km\,s^{-1}]$' if (j==jlist[-1]) else None, 
             cmap='plasma',xlabel='Y [M]',ylabel='Z [M]' if (i==0) else ' ',zoom=zoom,vec=vec,level=level,
-            xyz=xyz,unit=unit.velocity_cgs/ak.km_s_cgs,xyunit=xyunit,dpi=128,norm='log',vmin=1e1,vmax=3e4,
+            xyz=xyz,unit=vunit,xyunit=xyunit,dpi=128,norm='log',vmin=1e1,vmax=3e4,
             title=None,aspect='equal',yticklabels=[])
         #ad.plot_slice(fig=fig,ax=axes[1,1],var='pres',  key=f'z_{j}',save=False,label=r'$P\rm\,[k_B\,K\,cm^{-3}]$',
         #    cmap='plasma', xlabel='X [M]',ylabel='',       zoom=zoom,vec=vec,level=level,
@@ -327,7 +329,7 @@ def adplot(ad,zlist=None,dlevel=1):
             title=None,aspect='equal',yticklabels=[])
         ad.plot_slice(fig=fig,ax=axes[3,i],var='vtot',key=f'y_{j}',axis='y',save=False,label=r'$|v|\rm\,[km\,s^{-1}]$' if (j==jlist[-1]) else None, 
             cmap='plasma',xlabel='X [M]',ylabel='Z [M]' if (i==0) else ' ',zoom=zoom,vec=vec,level=level,
-            xyz=xyz,unit=unit.velocity_cgs/ak.km_s_cgs,xyunit=xyunit,dpi=128,norm='log',vmin=1e1,vmax=3e4,
+            xyz=xyz,unit=vunit,xyunit=xyunit,dpi=128,norm='log',vmin=1e1,vmax=3e4,
             title=None,aspect='equal',yticklabels=[])
         #ad.plot_slice(fig=fig,ax=axes[1,1],var='pres',  key=f'z_{j}',save=False,label=r'$P\rm\,[k_B\,K\,cm^{-3}]$',
         #    cmap='plasma', xlabel='X [M]',ylabel='',       zoom=zoom,vec=vec,level=level,
@@ -365,7 +367,7 @@ def adplot(ad,zlist=None,dlevel=1):
             title=None,aspect='equal',yticklabels=[])
         ad.plot_slice(fig=fig,ax=axes[3,i],var='vtot',key=f'z_{j}',axis='z',save=False,label=r'$|v|\rm\,[km\,s^{-1}]$' if (j==jlist[-1]) else None, 
             cmap='plasma',xlabel='X [M]',ylabel='Y [M]' if (i==0) else ' ',zoom=zoom,vec=vec,level=level,
-            xyz=xyz,unit=unit.velocity_cgs/ak.km_s_cgs,xyunit=xyunit,dpi=128,norm='log',vmin=1e1,vmax=3e4,
+            xyz=xyz,unit=vunit,xyunit=xyunit,dpi=128,norm='log',vmin=1e1,vmax=3e4,
             title=None,aspect='equal',yticklabels=[])
         #ad.plot_slice(fig=fig,ax=axes[1,1],var='pres',  key=f'z_{j}',save=False,label=r'$P\rm\,[k_B\,K\,cm^{-3}]$',
         #    cmap='plasma', xlabel='X [M]',ylabel='',       zoom=zoom,vec=vec,level=level,

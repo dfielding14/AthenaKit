@@ -72,11 +72,23 @@ mue = 1.14
 # Units
 
 class Units:
-    def __init__(self,lunit=pc_cgs,munit=atomic_mass_unit_cgs*pc_cgs**3,tunit=myr_cgs,mu=1.0):
+    # default unit is cgs
+    def __init__(self,lunit=1.0,munit=1.0,tunit=1.0,mu=1.0):
         self.length_cgs=lunit
         self.mass_cgs=munit
         self.time_cgs=tunit
         self.mu=mu
+        # set all the constants as attributes
+        for name, value in globals().items():
+            # check if the variable is a constant
+            if ((not name.startswith("_")) and isinstance(value, (int, float))):
+                setattr(self, name, value)
+                # setattr(self, f"_{name}", value)  # Set it as a private attribute
+                # Define a getter function for each attribute
+                # getter = lambda self, name=name: getattr(self, f"_{name}")
+                # Set it as a property on the class
+                # setattr(self, name, property(getter))
+
     @property
     def velocity_cgs(self):
         return self.length_cgs/self.time_cgs
@@ -91,16 +103,16 @@ class Units:
         return self.energy_cgs/self.length_cgs**3
     @property
     def temperature_cgs(self):
-        return self.velocity_cgs**2*self.mu*atomic_mass_unit_cgs/k_boltzmann_cgs
+        return self.velocity_cgs**2*self.mu*self.atomic_mass_unit_cgs/self.k_boltzmann_cgs
     @property
     def grav_constant(self):
-        return grav_constant_cgs*self.density_cgs*self.time_cgs**2
+        return self.grav_constant_cgs*self.density_cgs*self.time_cgs**2
     @property
     def speed_of_light(self):
-        return speed_of_light_cgs/self.velocity_cgs
+        return self.speed_of_light_cgs/self.velocity_cgs
     @property
     def number_density_cgs(self):
-        return self.density_cgs/self.mu/atomic_mass_unit_cgs
+        return self.density_cgs/self.mu/self.atomic_mass_unit_cgs
     @property
     def cooling_cgs(self):
         return self.pressure_cgs/self.time_cgs/self.number_density_cgs**2
@@ -112,7 +124,10 @@ class Units:
         return self.pressure_cgs*self.velocity_cgs*self.length_cgs/self.temperature_cgs
     @property
     def entropy_kevcm2(self,gamma=5./3.):
-        return self.pressure_cgs/keV_cgs/self.number_density_cgs**gamma
+        return self.pressure_cgs/self.keV_cgs/self.number_density_cgs**gamma
     @property
     def magnetic_field_cgs(self):
-        return (4.0*pi*self.density_cgs)**0.5*self.velocity_cgs
+        return (4.0*self.pi*self.density_cgs)**0.5*self.velocity_cgs
+
+# unit=Units(lunit=kpc_cgs,munit=0.618*atomic_mass_unit_cgs*kpc_cgs**3,mu=0.618)
+unit=Units()

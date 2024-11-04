@@ -15,10 +15,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import interp1d as sp_interp1d
 
 from . import io
-from .units import *
-
-mu=0.618
-unit=Units(lunit=kpc_cgs,munit=mu*atomic_mass_unit_cgs*kpc_cgs**3,mu=mu)
 
 def zeros_like(obj):
     if (type(obj) is dict):
