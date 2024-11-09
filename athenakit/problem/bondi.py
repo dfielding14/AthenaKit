@@ -64,8 +64,9 @@ def add_gr_data(ad):
     r2 = ad.data('r')**2
     rks = ad.data('rks')
     rks2 = ad.data('rks')**2
-    sth = xp.sin(ad.data('theta'))
-    cth = xp.cos(ad.data('theta'))
+    theta = xp.arccos(ad.data('z')/rks)
+    sth = xp.sin(theta)
+    cth = xp.cos(theta)
     sph = xp.sin(ad.data('phi'))
     cph = xp.cos(ad.data('phi'))
     drdx = rks*ad.data('x')/(2.0*rks2 - r2 + a2)

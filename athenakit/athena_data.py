@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 
 from .io import read_binary
 from .utils import eval_expr, save_dict_to_hdf5, load_dict_from_hdf5
+from .physics import grmhd
 from . import global_vars
 if (global_vars.cupy_enabled):
     import cupy as xp
@@ -163,6 +164,7 @@ class AthenaData:
 
     def config(self):
         if (self.data_raw and not self.coord): self.config_coord()
+        self._config_data()
         self._config_data_func()
         self.path = str(Path(self.filename).parent)
         self.num = int(self.filename.split('.')[-2])
@@ -204,11 +206,13 @@ class AthenaData:
         self.x3min = self.header( 'mesh', 'x3min', float)
         self.x3max = self.header( 'mesh', 'x3max', float)
 
+        self.is_gr = self.header('coord','general_rel',bool,False)
+        self.spin = self.header('coord','a',float,0.0)
         self.is_mhd = 'mhd' in self._header.keys()
-        self.use_e=self.header('mhd','use_e',bool,True) if self.is_mhd else self.header('hydro','use_e',bool,True) 
         self.gamma=self.header('mhd','gamma',float,5/3) if self.is_mhd else self.header('hydro','gamma',float,5/3)
-        self.iso_cs=self.header('mhd','iso_sound_speed',float,0.0) if self.is_mhd else self.header('hydro','iso_sound_speed',float,0.0)
-        
+        # self.use_e=self.header('mhd','use_e',bool,True) if self.is_mhd else self.header('hydro','use_e',bool,True)
+        # self.iso_cs=self.header('mhd','iso_sound_speed',float,0.0) if self.is_mhd else self.header('hydro','iso_sound_speed',float,0.0)
+
         return
     
     def config_coord(self):
@@ -235,6 +239,12 @@ class AthenaData:
         self.data_func[name]=func
         return
     
+    # add extra raw data
+    def _config_data(self):
+        if (self.is_gr):
+            # print('Adding GR data')
+            self.data_raw.update(grmhd.variables(self.data,self.spin))
+
     def _config_data_func(self):
         self.data_func['zeros'] = lambda d : xp.zeros(d('dens').shape)
         self.data_func['ones'] = lambda d : xp.ones(d('dens').shape)
@@ -306,6 +316,8 @@ class AthenaData:
         self.data_func['ptot'] = lambda d : d('pres')+d('pmag') if d.ad.is_mhd else d('pres')
         self.data_func['etot'] = lambda d : d('ekin')+d('eint')+d('emag') if d.ad.is_mhd\
                                                else d('ekin')+d('eint')
+        if (self.is_gr):
+            self.data_func.update(grmhd.functions(self.spin))
         return
 
     @property

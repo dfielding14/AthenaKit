@@ -1,6 +1,5 @@
 ### global variables ###
 
-global cupy_enabled
 cupy_enabled = False
 try:
     import cupy
@@ -10,7 +9,6 @@ try:
 except:
     pass
 
-global mpi_enabled, rank, size
 mpi_enabled, rank, size = False, 0, 1
 try:
     from mpi4py import MPI
@@ -21,4 +19,3 @@ try:
         print('MPI enabled')
 except:
     pass
-
