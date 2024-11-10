@@ -105,6 +105,7 @@ class AthenaData:
     
     def load_pickle(self,filename,**kwargs):
         self._load_from_dic(pickle.load(open(filename,'rb')),**kwargs)
+        self._config_attrs_from_header()
         return
 
     def load_hdf5(self,filename,**kwargs):
@@ -187,6 +188,8 @@ class AthenaData:
         keyname = keyname.strip()
         if blockname in self._header.keys():
             if keyname in self._header[blockname].keys():
+                if (astype==bool):
+                    return self._header[blockname][keyname].lower().replace(' ','') not in ['f','false','0']
                 return astype(self._header[blockname][keyname])
         warnings.warn(f'Warning: no parameter called {blockname}/{keyname}, return default value: {default}')
         return default
