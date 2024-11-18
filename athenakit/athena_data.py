@@ -613,11 +613,13 @@ class AthenaData:
                 if (range is None):
                     dat = self.data(var)[where]
                     dat = dat[xp.isfinite(dat)]
-                    if dat.size==0:
-                        warnings.warn(f"Warning: no bins for {var}, using linspace(0,1) instead")
-                        return xp.linspace(0.0,1.0,bins+1)
-                    dmin,dmax = asnumpy(dat.min()),asnumpy(dat.max())
+                    dmin,dmax = np.array(1e200),np.array(-1e200)
+                    if (dat.size>0):
+                        dmin,dmax = asnumpy(dat.min()),asnumpy(dat.max())
                     if (global_vars.mpi_enabled): dmin, dmax = mpi.min(dmin), mpi.max(dmax)
+                    if (dmin>dmax):
+                        warnings.warn(f"Warning: no bins for {var}, setting to default")
+                        dmin,dmax = 0,1
                     return xp.linspace(float(dmin),float(dmax),bins+1)
                 else:
                     return xp.linspace(range[0],range[1],bins+1)
@@ -626,13 +628,14 @@ class AthenaData:
                     dat = self.data(var)[where]
                     dat = dat[xp.isfinite(dat)]
                     dat = dat[dat>0.0]
-                    if dat.size==0:
-                        warnings.warn(f"Warning: no bins for {var}, using logspace(0,1) instead")
-                        return xp.logspace(0.0,1.0,bins+1)
-                    else:
+                    dmin,dmax = np.array(1e200),np.array(1e-200)
+                    if (dat.size>0):
                         dmin,dmax = asnumpy(dat.min()),asnumpy(dat.max())
-                        if (global_vars.mpi_enabled): dmin, dmax = mpi.min(dmin), mpi.max(dmax)
-                        return xp.logspace(xp.log10(float(dmin)),xp.log10(float(dmax)),bins+1)
+                    if (global_vars.mpi_enabled): dmin, dmax = mpi.min(dmin), mpi.max(dmax)
+                    if (dmin>dmax):
+                        warnings.warn(f"Warning: no bins for {var}, setting to default")
+                        dmin,dmax = 1,10
+                    return xp.logspace(xp.log10(float(dmin)),xp.log10(float(dmax)),bins+1)
                 else:
                     return xp.logspace(xp.log10(range[0]),xp.log10(range[1]),bins+1)
             else:
@@ -879,7 +882,6 @@ class AthenaData:
                    xticks=None,yticks=None,xticklabels=None,yticklabels=None, **kwargs):
         fig,ax = self._figax(fig,ax,dpi)
         img = asnumpy(img[:,:])
-        #print(x,y,img)
         im=ax.pcolormesh(x,y,img,norm=norm,cmap=cmap,**kwargs)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
