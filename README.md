@@ -2,23 +2,16 @@
 
 Toolkit for research with AthenaK
 
-## Getting started
+## Overview
 
-The code is designed to analyze and visualize the data dumped by [AthenaK](https://github.com/IAS-Astrophysics/athenak) conveniently and efficiently.
+The code is designed to analyze and visualize the simulation data dumped by [AthenaK](https://github.com/IAS-Astrophysics/athenak) conveniently and efficiently.
 
 Current features are:
 - Enables *performance-portability*. Support both CPU and CUDA GPU
-- Support MPI
+- Support `MPI`
 - Non-relativistic (Newtonian) hydrodynamics and MHD
 - General relativistic (GR) hydrodynamics and MHD in stationary spacetimes
 
-Documentation is under construction on the wiki pages.
+## Getting started
 
-
-
-```
-cd existing_repo
-git remote add origin https://github.com/mh-guo/AthenaKit.git
-git branch -M main
-git push -uf origin main
-```
+Documentation is under construction on the [wiki](https://github.com/mh-guo/AthenaKit/wiki) pages.
