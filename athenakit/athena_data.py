@@ -165,7 +165,7 @@ class AthenaData:
 
     def config(self):
         if (self.data_raw and not self.coord): self.config_coord()
-        self._config_data()
+        if (self.data_raw): self._config_data()
         self._config_data_func()
         self.path = str(Path(self.filename).parent)
         self.num = int(self.filename.split('.')[-2])
@@ -225,8 +225,8 @@ class AthenaData:
         y=xp.swapaxes(xp.linspace(mb_geo[mb_list,2],mb_geo[mb_list,3],nx2+1),0,1)
         z=xp.swapaxes(xp.linspace(mb_geo[mb_list,4],mb_geo[mb_list,5],nx3+1),0,1)
         x,y,z=0.5*(x[:,:-1]+x[:,1:]),0.5*(y[:,:-1]+y[:,1:]),0.5*(z[:,:-1]+z[:,1:])
-        ZYX=xp.swapaxes(xp.asarray([xp.meshgrid(z[i],y[i],x[i]) for i in range(len(mb_list))]),0,1)
-        self.coord['x'],self.coord['y'],self.coord['z']=ZYX[2].swapaxes(1,2),ZYX[1].swapaxes(1,2),ZYX[0].swapaxes(1,2)
+        ZYX=xp.swapaxes(xp.asarray([xp.meshgrid(z[i],y[i],x[i],indexing='ij') for i in range(len(mb_list))]),0,1)
+        self.coord['x'],self.coord['y'],self.coord['z']=ZYX[2],ZYX[1],ZYX[0]
         dx=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,1]-mb_geo[i,0])/nx1) for i in mb_list])
         dy=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,3]-mb_geo[i,2])/nx2) for i in mb_list])
         dz=xp.asarray([xp.full((nx3,nx2,nx1),(mb_geo[i,5]-mb_geo[i,4])/nx3) for i in mb_list])
@@ -407,15 +407,15 @@ class AthenaData:
 
     def _xyz_uniform(self,level=0,xyz=[]):
         xc,yc,zc=self._cell_centers(level,xyz)
-        ZYX=xp.meshgrid(zc,yc,xc)
-        return ZYX[2].swapaxes(0,1),ZYX[1].swapaxes(0,1),ZYX[0].swapaxes(0,1)
+        ZYX=xp.meshgrid(zc,yc,xc,indexing='ij')
+        return ZYX[2],ZYX[1],ZYX[0]
     
     def _coord_uniform(self,var,level=0,xyz=[],**kwargs):
         xc,yc,zc=self._cell_centers(level,xyz)
         dx,dy,dz=self._cell_length(level,xyz)
-        if (var=='x'): return xp.meshgrid(zc,yc,xc)[2].swapaxes(0,1)
-        if (var=='y'): return xp.meshgrid(zc,yc,xc)[1].swapaxes(0,1)
-        if (var=='z'): return xp.meshgrid(zc,yc,xc)[0].swapaxes(0,1)
+        if (var=='x'): return xp.meshgrid(zc,yc,xc,indexing='ij')[2]
+        if (var=='y'): return xp.meshgrid(zc,yc,xc,indexing='ij')[1]
+        if (var=='z'): return xp.meshgrid(zc,yc,xc,indexing='ij')[0]
         if (var=='dx'): return xp.full((zc.size,yc.size,xc.size),dx)
         if (var=='dy'): return xp.full((zc.size,yc.size,xc.size),dy)
         if (var=='dz'): return xp.full((zc.size,yc.size,xc.size),dz)
@@ -914,7 +914,7 @@ class AthenaData:
         ax.streamplot(x*xyunit, y*xyunit, u, v, color=color,linewidth=linewidth,arrowsize=arrowsize)
         return fig
 
-    def plot_phase(self,var='dens,temp',key='vol',bins=128,weights='vol',where=None,title='',label='',xlabel='X',ylabel='Y',xscale='log',yscale='log',\
+    def plot_phase(self,var='dens,temp',key='vol',bins=128,weights='vol',where=None,title='',label='',xlabel=None,ylabel=None,xscale='log',yscale='log',\
                    unit=1.0,cmap='viridis',norm='log',extent=None,density=False,save=False,savepath='',figdir='../figure/Simu_',\
                    figpath='',x=None,y=None,xshift=0.0,xunit=1.0,yshift=0.0,yunit=1.0,fig=None,ax=None,dpi=128,**kwargs):
         fig,ax = self._figax(fig,ax,dpi)
@@ -934,6 +934,8 @@ class AthenaData:
         im_arr = im_arr.T*unit
         x =  x*xunit+xshift
         y =  y*yunit+yshift
+        if (xlabel is None): xlabel = var.split(',')[0]
+        if (ylabel is None): ylabel = var.split(',')[1]
         im=self.plot_image(x,y,im_arr,title=title,label=label,xlabel=xlabel,ylabel=ylabel,xscale=xscale,yscale=yscale,\
                     cmap=cmap,norm=norm,save=save,figfolder=figdir,figlabel=var,figname=savepath,fig=fig,ax=ax,**kwargs)
         if (title != None): ax.set_title(f"Time = {self.time}" if not title else title)

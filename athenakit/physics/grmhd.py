@@ -136,15 +136,29 @@ def r_horizon(a):
 ##################################################################
 
 # calculate the all the variables, slow but easy to understand and efficient
-def variables(d, a):
-    f = {}
-    x, y, z = d('x'), d('y'), d('z')
-    # v = cks_geometry(x, y, z, a)
+def variables(f, a):
+    """
+    Calculate all the variables used in the GRMHD simulation
+    
+    Parameters
+    ----------
+    f : function 
+        A function that takes a string as input and returns the value of the variable
+    a : float
+        The spin parameter of the black hole
+
+    Returns
+    -------
+    v : dict
+        A dictionary containing all the variables
+    """
+    v = {}
+    x, y, z = f('x'), f('y'), f('z')
     alpha, g_tt, g_tx, g_ty, g_tz, g_xx, g_xy, g_xz, g_yy, g_yz, g_zz = \
         cks_geometry(x, y, z, a)
 
     # Calculate relativistic velocity
-    uux, uuy, uuz = d('velx'), d('vely'), d('velz')
+    uux, uuy, uuz = f('velx'), f('vely'), f('velz')
     uut = normal_lorentz(uux, uuy, uuz, g_xx, g_xy, g_xz, g_yy, g_yz, g_zz)
     ut, ux, uy, uz = norm_to_coord(uut, uux, uuy, uuz, alpha, g_tx, g_ty, g_tz)
     u_t, u_x, u_y, u_z = lower_vector(ut, ux, uy, uz,\
@@ -153,7 +167,7 @@ def variables(d, a):
     u_r, u_th, u_ph = cks_to_sks_vec_cov(u_x, u_y, u_z, x, y, z, a)
     
     # Calculate relativistic magnetic field
-    bbx, bby, bbz = d('bcc1'), d('bcc2'), d('bcc3')
+    bbx, bby, bbz = f('bcc1'), f('bcc2'), f('bcc3')
     bt, bx, by, bz = three_to_four_field(bbx, bby, bbz, ut, ux, uy, uz, u_x, u_y, u_z)
     b_t, b_x, b_y, b_z = lower_vector(bt, bx, by, bz,\
         g_tt, g_tx, g_ty, g_tz, g_xx, g_xy, g_xz, g_yy, g_yz, g_zz)
@@ -167,8 +181,8 @@ def variables(d, a):
     # Bph_rel = bph * ut - bt * uph
 
     # # Calculate relativistic related quantity
-    # dens = d('dens')
-    # ugas = d('eint')
+    # dens = f('dens')
+    # ugas = f('eint')
     # b2   = b_t * bt + b_x * bx + b_y * by + b_z * bz
     # pmag_rel = 0.5 * b2
     # pgas = (gamma_adi - 1.0) * ugas
@@ -215,49 +229,50 @@ def variables(d, a):
     # TODO(@mhguo): consider what to include as raw data
     # TODO(@mhguo): also consider the name of the variables
     # Add necessary variables to the dictionary
-    f['alpha'] = alpha
-    f['g_tt'] = g_tt
-    f['g_tx'] = g_tx
-    f['g_ty'] = g_ty
-    f['g_tz'] = g_tz
-    f['g_xx'] = g_xx
-    f['g_xy'] = g_xy
-    f['g_xz'] = g_xz
-    f['g_yy'] = g_yy
-    f['g_yz'] = g_yz
-    f['g_zz'] = g_zz
-    f['uut'] = uut
-    f['ut'] = ut
-    f['ux'] = ux
-    f['uy'] = uy
-    f['uz'] = uz
-    f['u_t'] = u_t
-    f['u_x'] = u_x
-    f['u_y'] = u_y
-    f['u_z'] = u_z
-    f['ur'] = ur
-    f['uth'] = uth
-    f['uph'] = uph
-    f['u_r'] = u_r
-    f['u_th'] = u_th
-    f['u_ph'] = u_ph
-    f['bt'] = bt
-    f['bx'] = bx
-    f['by'] = by
-    f['bz'] = bz
-    f['b_t'] = b_t
-    f['b_x'] = b_x
-    f['b_y'] = b_y
-    f['b_z'] = b_z
-    f['br'] = br
-    f['bth'] = bth
-    f['bph'] = bph
-    f['b_r'] = b_r
-    f['b_th'] = b_th
-    f['b_ph'] = b_ph
+    v['alpha'] = alpha
+    v['g_tt'] = g_tt
+    v['g_tx'] = g_tx
+    v['g_ty'] = g_ty
+    v['g_tz'] = g_tz
+    v['g_xx'] = g_xx
+    v['g_xy'] = g_xy
+    v['g_xz'] = g_xz
+    v['g_yy'] = g_yy
+    v['g_yz'] = g_yz
+    v['g_zz'] = g_zz
+    v['uut'] = uut
+    v['ut'] = ut
+    v['ux'] = ux
+    v['uy'] = uy
+    v['uz'] = uz
+    v['u_t'] = u_t
+    v['u_x'] = u_x
+    v['u_y'] = u_y
+    v['u_z'] = u_z
+    v['ur'] = ur
+    v['uth'] = uth
+    v['uph'] = uph
+    v['u_r'] = u_r
+    v['u_th'] = u_th
+    v['u_ph'] = u_ph
+    v['bt'] = bt
+    v['bx'] = bx
+    v['by'] = by
+    v['bz'] = bz
+    v['b_t'] = b_t
+    v['b_x'] = b_x
+    v['b_y'] = b_y
+    v['b_z'] = b_z
+    v['br'] = br
+    v['bth'] = bth
+    v['bph'] = bph
+    v['b_r'] = b_r
+    v['b_th'] = b_th
+    v['b_ph'] = b_ph
 
-    return f
+    return v
 
+#TODO: in principle, we can use the following function to calculate all the variables
 def functions(a):
     # assuming we have x, y, z, dens, velx, vely, velz, eint, bcc1, bcc2, bcc3
     f = {}
