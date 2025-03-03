@@ -6,6 +6,7 @@ __all__ = [
         'physics',
         'units'
         'utils',
+        'vis',
         ]
 
 from .io import *
@@ -15,3 +16,4 @@ from .utils import *
 from .athena_data import *
 from .kit import *
 from . import global_vars
+from . import vis

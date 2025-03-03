@@ -56,8 +56,9 @@ class AthenaData:
     def n(self):
         return self.num
 
-    def load(self,filename,config=True,**kwargs):
+    def load(self,filename,config=True,add_gr=False,**kwargs):
         self.filename=filename
+        self.add_gr=add_gr # temporary flag to add GR data
         if (filename.endswith('.bin')):
             self.binary_name = filename
             self.load_binary(filename,**kwargs)
@@ -244,7 +245,7 @@ class AthenaData:
     
     # add extra raw data
     def _config_data(self):
-        if (self.is_gr):
+        if (self.is_gr and self.add_gr):
             # print('Adding GR data')
             self.data_raw.update(grmhd.variables(self.data,self.spin))
 
@@ -441,17 +442,18 @@ class AthenaData:
             block_level = self.mb_logical[nmb,-1]
             block_loc = self.mb_logical[nmb,:3]
             block_data = raw[nraw]
+            dimz, dimy, dimx = np.array(block_data.shape) > 1
 
             # Prolongate coarse data and copy same-level data
             if (block_level <= physical_level):
                 s = int(2**(physical_level - block_level))
                 # Calculate destination indices, without selection
-                il_d = block_loc[0] * self.nx1 * s if self.Nx1 > 1 else 0
-                jl_d = block_loc[1] * self.nx2 * s if self.Nx2 > 1 else 0
-                kl_d = block_loc[2] * self.nx3 * s if self.Nx3 > 1 else 0
-                iu_d = il_d + self.nx1 * s if self.Nx1 > 1 else 1
-                ju_d = jl_d + self.nx2 * s if self.Nx2 > 1 else 1
-                ku_d = kl_d + self.nx3 * s if self.Nx3 > 1 else 1
+                il_d = block_loc[0] * self.nx1 * s if dimx else 0
+                jl_d = block_loc[1] * self.nx2 * s if dimy else 0
+                kl_d = block_loc[2] * self.nx3 * s if dimz else 0
+                iu_d = il_d + self.nx1 * s if dimx else 1
+                ju_d = jl_d + self.nx2 * s if dimy else 1
+                ku_d = kl_d + self.nx3 * s if dimz else 1
                 # Calculate (prolongated) source indices, with selection
                 il_s = max(il_d, i_min) - il_d
                 jl_s = max(jl_d, j_min) - jl_d
@@ -484,11 +486,11 @@ class AthenaData:
                     il_s = il_s - il_r * s
                     iu_s = iu_s - il_r * s
                     block_data = block_data[kl_r:ku_r,jl_r:ju_r,il_r:iu_r]
-                    if self.Nx1 > 1:
+                    if dimx:
                         block_data = xp.repeat(block_data, s, axis=2)
-                    if self.Nx2 > 1:
+                    if dimy:
                         block_data = xp.repeat(block_data, s, axis=1)
-                    if self.Nx3 > 1:
+                    if dimz:
                         block_data = xp.repeat(block_data, s, axis=0)
                 data[kl_d:ku_d,jl_d:ju_d,il_d:iu_d]=block_data[kl_s:ku_s,jl_s:ju_s,il_s:iu_s]
             # Restrict fine data, volume average
@@ -496,12 +498,12 @@ class AthenaData:
                 # Calculate scale
                 s = int(2 ** (block_level - physical_level))
                 # Calculate destination indices, without selection
-                il_d = int(block_loc[0] * self.nx1 / s) if self.Nx1 > 1 else 0
-                jl_d = int(block_loc[1] * self.nx2 / s) if self.Nx2 > 1 else 0
-                kl_d = int(block_loc[2] * self.nx3 / s) if self.Nx3 > 1 else 0
-                iu_d = int(il_d + self.nx1 / s) if self.Nx1 > 1 else 1
-                ju_d = int(jl_d + self.nx2 / s) if self.Nx2 > 1 else 1
-                ku_d = int(kl_d + self.nx3 / s) if self.Nx3 > 1 else 1
+                il_d = int(block_loc[0] * self.nx1 / s) if dimx else 0
+                jl_d = int(block_loc[1] * self.nx2 / s) if dimy else 0
+                kl_d = int(block_loc[2] * self.nx3 / s) if dimz else 0
+                iu_d = int(il_d + self.nx1 / s) if dimx else 1
+                ju_d = int(jl_d + self.nx2 / s) if dimy else 1
+                ku_d = int(kl_d + self.nx3 / s) if dimz else 1
                 #print(kl_d,ku_d,jl_d,ju_d,il_d,iu_d)
                 # Calculate (restricted) source indices, with selection
                 il_s = max(il_d, i_min) - il_d
@@ -522,20 +524,20 @@ class AthenaData:
                 
                 # Account for restriction in source indices
                 num_extended_dims = 0
-                if self.Nx1 > 1:
+                if dimx:
                     il_s *= s
                     iu_s *= s
-                if self.Nx2 > 1:
+                if dimy:
                     jl_s *= s
                     ju_s *= s
-                if self.Nx3 > 1:
+                if dimz:
                     kl_s *= s
                     ku_s *= s
                 
                 # Calculate fine-level offsets
-                io_s = s if self.Nx1 > 1 else 1
-                jo_s = s if self.Nx2 > 1 else 1
-                ko_s = s if self.Nx3 > 1 else 1
+                io_s = s if block_data.shape[-1] > 1 else 1
+                jo_s = s if block_data.shape[-2] > 1 else 1
+                ko_s = s if block_data.shape[-3] > 1 else 1
 
                 # Assign values
                 # TODO(@mhguo): arithmetic mean may fail when fine-level is much finer than coarse-level
@@ -564,6 +566,9 @@ class AthenaData:
         if (axis=='z'): return -3
         if (axis=='y'): return -2
         if (axis=='x'): return -1
+        if (axis=='x3'): return -3
+        if (axis=='x2'): return -2
+        if (axis=='x1'): return -1
         raise ValueError(f"axis '{axis}' not supported")
 
     # helper functions similar to numpy/cupy

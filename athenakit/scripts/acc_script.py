@@ -3,6 +3,10 @@ Script for running analysis of athena++ simulation
 
 Example:
     python -u script.py -p ../simulation -t wpv -v simu.hydro_w
+    # for specific files
+    python -u script.py -p ../simulation -t wpv -v simu.hydro_w --nlist 0 1 2
+    # for specific range
+    python -u script.py -p ../simulation -t wpv -v simu.hydro_w -b 0 -e 10 -s 2
     # for parallel run
     mpirun -n 2 python -u script.py -p ../simulation -t wpv -v simu.hydro_w
 '''
@@ -15,7 +19,7 @@ import numpy as np
 try:
     import cupy as xp
     xp.array(0)
-except ImportError:
+except:
     import numpy as xp
 from matplotlib import pyplot as plt
 import multiprocessing as mp
@@ -508,17 +512,21 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--beg', type=int, default = 0)
     parser.add_argument('-e', '--end', type=int, default = 0)
     parser.add_argument('-s', '--step', type=int, default = 1)
+    parser.add_argument('--nlist', nargs='+', help='List of files', default=[])
     parser.add_argument('--batch_size', type=int, default = 0)
     parser.add_argument('-v', '--variables', nargs='+', help='<Required> Set flag', default=['mhd_w_bcc','mhd_divb'])
     parser.add_argument('-z', '--zooms', nargs='+', help='<Required> Set flag', default=[])
     parser.add_argument('-l', '--level', type=int, default = 1)
+    parser.add_argument('--bins', type=int, default = 256)
     parser.add_argument('-n', '--nprocess', type=int, default = 0)
     args = parser.parse_args()
     data_path=args.path+'/'+args.data+'/'
     task=args.task
     variables=args.variables
     zooms=args.zooms if (len(args.zooms)>0) else None
+    nlist=args.nlist if (len(args.nlist)>0) else None
     dlevel=args.level
+    bins=args.bins
     print(variables)
     # get path
     binpath=data_path+'bin/'
@@ -534,7 +542,7 @@ if __name__ == "__main__":
         ak.mpi.MPI.COMM_WORLD.Barrier()
     # get numlist
     numlist=[]
-    binfiles = [binpath+f for f in os.listdir(binpath) if f.endswith('.bin')]
+    binfiles = [binpath+f for f in os.listdir(binpath) if (f.startswith(variables[0]) and f.endswith('.bin'))]
     athdffiles = [athdfpath+f for f in os.listdir(athdfpath) if f.endswith('.athdf')]
     for file in sorted(binfiles+athdffiles):
         if file.endswith('.bin') or file.endswith('.athdf'):
@@ -544,6 +552,7 @@ if __name__ == "__main__":
                 numlist.append(num)
     numlist=sorted(list(set(numlist)))
     if (args.end-args.beg>0): numlist=list(range(args.beg,args.end,args.step))
+    if (nlist is not None): numlist = [int(n) for n in nlist]
     print('Work for', data_path, numlist)
     # run
     def run(i):
@@ -563,10 +572,11 @@ if __name__ == "__main__":
                             print(f'convert {binfilename} to {filename}')
             if ('w' in task):
                 print(f'loading binary i={i}')
+                # filename=athdfpath+f'{variable}.{i:05d}.athdf'
                 filename=binpath+f'{variable}.{i:05d}.bin'
                 ad.load(filename)
                 print(f'working i={i}')
-                adwork(ad,zooms,dlevel).save(pklpath+f'/Base.{ad.num:05d}.pkl')
+                adwork(ad,zooms,dlevel,bins).save(pklpath+f'/Base.{ad.num:05d}.pkl')
                 #adwork(ad).save(ad.path.replace('athdf','h5')+f'/Base.{ad.num:05d}.h5')
             if ('u' in task):
                 if ('w' not in task):
@@ -575,9 +585,10 @@ if __name__ == "__main__":
                     ad.load(filename)
                     print(f'loading pkl i={i}')
                     filename=pklpath+f'/Base.{i:05d}.pkl'
-                    ad.load(filename)
+                    if os.path.isfile(filename):
+                        ad.load(filename)
                 print(f'updating i={i}')
-                adupdate(ad).save(pklpath+f'/Base.{ad.num:05d}.pkl')
+                adupdate(ad,bins).save(pklpath+f'/Base.{ad.num:05d}.pkl')
             if ('p' in task and ak.global_vars.rank==0):
                 print(f'loading pkl i={i}')
                 filename=pklpath+f'/Base.{i:05d}.pkl'
