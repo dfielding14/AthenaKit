@@ -20,7 +20,7 @@ def hst(filename, raw=False, strict=False, *args, **kwargs):
         arr=np.loadtxt(filename, *args, **kwargs).T
     except:
         warnings.warn(f"Could not read file {filename} with np.loadtxt, trying hst_complex")
-        return hst_complex(filename, raw, *args, **kwargs)
+        return hst_complex(filename, raw, strict, *args, **kwargs)
     locs=np.ones(arr[0].shape,dtype=bool)
     if (not raw):
         # Make time monotonic increasing
@@ -40,7 +40,7 @@ def hst(filename, raw=False, strict=False, *args, **kwargs):
     return data
 
 # Read .hst files and return dict of 1D arrays.
-def hst_complex(filename, raw=False, *args, **kwargs):
+def hst_complex(filename, raw=False, strict=False, *args, **kwargs):
     data = {}
     data['time'] = []
     with open(filename, 'r') as data_file:
@@ -59,10 +59,19 @@ def hst_complex(filename, raw=False, *args, **kwargs):
     # convert lists to numpy arrays
     for key in data:
         data[key] = np.array(data[key])
+    locs=np.ones(data['time'].shape,dtype=bool)
     if (not raw):
         # Make time monotonic increasing
         mono=np.minimum.accumulate(data['time'][::-1])[::-1]
-        locs=np.append(mono[:-1]<mono[1:],True)
+        if (strict):
+            locs=np.append(mono[:-1]<mono[1:],True)
+        else:
+            tnow=data['time'][-1]
+            for i in range(len(data['time'])-1,-1,-1):
+                if (data['time'][i] > tnow):
+                    locs[i] = False
+                else:
+                    tnow = data['time'][i]
         for key in data:
             data[key]=data[key][locs]
     return data

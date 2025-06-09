@@ -58,6 +58,7 @@ def adwork(ad,zlist=None,dlevel=1,bins=256):
     varl=[['r','dens'],['r','temp'],['r','pres'],['r','amz']]
     ad.set_hist2d(varl,weights='mass',bins=bins,scales='log')
 
+    print('profile '+str(ad.num))
     varl=['dens','temp','pres','wgas','dens*lor','dens*ur','wgas*u_t','wgas*ur','wgas*u_t*ur','wgas*u_ph','Tr_ph_hydro',
           'wmhd','wmhd*ur','wmhd*u_ph','Tr_ph_mhd','br','b_ph','b^2','br*b_ph']
     ad.set_profile2d(['r','theta'],varl=varl,key='rtheta_vol',bins=[bins,bins//4],weights='vol',scales=['log','linear'],
