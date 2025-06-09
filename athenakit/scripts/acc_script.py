@@ -28,7 +28,7 @@ from pathlib import Path
 sys.path.append('/u/mguo/Git')
 import athenakit.athenakit as ak
 from athenakit.athenakit import units
-from athenakit.athenakit.problem import acc
+from athenakit.athenakit.app import acc
 plt.style.use('~/Git/pykit/pykit/mplstyle/mg')
 
 # TODO(@mhguo): seperate work and plot onto gpu and cpu respectively!
