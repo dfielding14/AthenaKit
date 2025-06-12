@@ -247,13 +247,18 @@ def pro_from_hist2d(hist,x='r',y='dens'):
     return x,ym
 # quantile with weights
 def quantile(x,q,weights=None,axis=None):
-    if (weights is None):
-        return np.quantile(x,q)
-    else:
-        if (axis is None):
-            return np.interp(q,np.cumsum(weights)/np.sum(weights),x)
-        else:
-            return np.apply_along_axis(lambda a: np.interp(q,np.cumsum(a)/np.sum(a),x),axis,weights)
+    """Compute weighted quantiles along an axis."""
+    x = np.asarray(x)
+    if weights is None:
+        return np.quantile(x, q, axis=axis)
+    weights = np.asarray(weights)
+    if axis is None:
+        return np.interp(q, np.cumsum(weights) / np.sum(weights), x)
+    # move target axis to the front for easy iteration
+    x_m = np.moveaxis(x, axis, 0)
+    w_m = np.moveaxis(weights, axis, 0)
+    results = [np.interp(q, np.cumsum(w) / np.sum(w), arr) for arr, w in zip(x_m, w_m)]
+    return np.moveaxis(np.array(results), 0, axis)
 
 ##########################################################################################
 ## Scipy Measurements Label with boundary correction
@@ -267,7 +272,7 @@ def clean_tuples(tuples):
 
 def merge_tuples_unionfind(tuples):
     # use classic algorithms union find with path compression
-    # https://enp.wikipedia.org/wiki/Disjoint-set_data_structure
+    # https://en.wikipedia.org/wiki/Disjoint-set_data_structure
     parent_dict = {}
 
     def subfind(x):

@@ -1,11 +1,9 @@
 import sys
 from pathlib import Path
-
 import matplotlib.pyplot as plt
 
 from athenakit import AthenaData
 from athenakit.vis import plot_amr_slice_patchwork, plot_amr_projection
-
 
 def main(athdf_file: Path, level: int = 0) -> None:
     """Load AMR data and create example plots."""
@@ -24,6 +22,7 @@ def main(athdf_file: Path, level: int = 0) -> None:
 
     # Projection of eint weighted by density
     fig2, _ = plot_amr_projection(ad, variable="eint", weight="dens", axis="z", level=level)
+
     fig2.savefig("eint_projection.png", bbox_inches="tight")
 
 

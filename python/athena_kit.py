@@ -383,7 +383,7 @@ def clean_tuples(tuples):
 
 def merge_tuples_unionfind(tuples):
     # use classic algorithms union find with path compression
-    # https://enp.wikipedia.org/wiki/Disjoint-set_data_structure
+    # https://en.wikipedia.org/wiki/Disjoint-set_data_structure
     parent_dict = {}
 
     def subfind(x):
