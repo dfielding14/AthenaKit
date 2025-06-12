@@ -1,3 +1,6 @@
+"""
+Detect optional dependencies such as CuPy and MPI.
+"""
 ### global variables ###
 
 cupy_enabled = False

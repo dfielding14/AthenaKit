@@ -1,3 +1,9 @@
+"""
+Utility functions for converting AthenaK outputs and performing basic analysis.
+
+This module collects helpers for converting binary dumps to ATHDF format,
+loading history files, and common mathematical utilities.
+"""
 import os
 from time import sleep
 import numpy as np
@@ -17,6 +23,7 @@ from scipy.interpolate import interp1d as sp_interp1d
 from . import io
 
 def zeros_like(obj):
+    """Recursively create zero-filled structures matching ``obj``."""
     if (type(obj) is dict):
         return {k:zeros_like(v) for k,v in obj.items()}
     if (type(obj) is list):
@@ -26,6 +33,7 @@ def zeros_like(obj):
     return np.zeros_like(obj)
 
 def plus(a,b):
+    """Add structures ``a`` and ``b`` element-wise."""
     if (type(a) is dict):
         return {k:plus(a[k],b[k]) for k in a.keys()}
     if (type(a) is list):
@@ -35,6 +43,7 @@ def plus(a,b):
     return a+b
 
 def times(a,b):
+    """Multiply structure ``a`` by scalar ``b`` element-wise."""
     if (type(a) is dict):
         return {k:times(a[k],b) for k in a.keys()}
     if (type(a) is list):
@@ -45,6 +54,15 @@ def times(a,b):
 
 # Convert all binary files in binary path to athdf files in athdf path
 def bin_to_athdf(binary_fname,athdf_fname):
+    """Convert a single AthenaK binary output to ``.athdf`` format.
+
+    Parameters
+    ----------
+    binary_fname : str
+        Path to the input ``.bin`` file produced by AthenaK.
+    athdf_fname : str
+        Destination filename for the converted ``.athdf`` file.
+    """
     xdmf_fname = athdf_fname + ".xdmf"
     filedata = io.read_binary(binary_fname)
     io.write_athdf(athdf_fname, filedata)
@@ -52,6 +70,19 @@ def bin_to_athdf(binary_fname,athdf_fname):
     return
 
 def bins_to_athdfs(binpath,athdfpath,overwrite=False,info=True):
+    """Batch convert a directory of ``.bin`` files to ``.athdf`` files.
+
+    Parameters
+    ----------
+    binpath : str
+        Directory containing AthenaK ``.bin`` dumps.
+    athdfpath : str
+        Output directory for ``.athdf`` files.
+    overwrite : bool, optional
+        If ``True`` existing files will be replaced.
+    info : bool, optional
+        Print progress information when ``True``.
+    """
     if not os.path.isdir(athdfpath):
         os.mkdir(athdfpath)
     for file in sorted(os.listdir(binpath)):
