@@ -59,16 +59,16 @@ This converts all binary dumps under `/path/to/run/bin` to `.athdf` files inside
 `/path/to/run/athdf` and then prints the list of time steps read from the
 corresponding history file.
 
-### amr_plots.py
+## AMR Visualization
 
-```bash
-python examples/amr_plots.py output.athdf [level]
-```
+To visualize adaptive mesh refinement (AMR) data, use the
+`examples/amr_plots.py` script. It loads an `.athdf` file, produces a slice
+plot of density with meshblock boundaries and then makes a projection of
+internal energy weighted by density.
 
-Loads an AMR data file and creates two example plots: a slice of the density and
-a projection of internal energy weighted by density.  The resulting PNG files
-are saved in the current working directory.  The optional `level` argument
-selects the AMR level to plot.
+The optional `level` argument selects the uniform AMR level for the projection
+plot (default `0`). The script saves `density_slice.png` and
+`eint_projection.png` in the current directory.
 
 ## CUDA and MPI Support
 
