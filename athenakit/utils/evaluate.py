@@ -28,8 +28,12 @@ def eval_expr(expr, func):
         TypeError: If the expression contains unsupported operations.
     """
     def _eval(node):
-        if isinstance(node, ast.Num):  # <number>
+        if isinstance(node, ast.Num):  # <number> (Python <3.8)
             return node.n
+        elif isinstance(node, ast.Constant):  # <number> for Python >=3.8
+            if isinstance(node.value, (int, float)):
+                return node.value
+            raise TypeError(f"Unsupported constant: {node.value}")
         elif isinstance(node, ast.BinOp):  # <left> <operator> <right>
             left = _eval(node.left)
             right = _eval(node.right)
