@@ -31,7 +31,7 @@ from athenakit.athenakit import units
 from athenakit.athenakit.app import acc
 plt.style.use('~/Git/pykit/pykit/mplstyle/mg')
 
-# TODO(@mhguo): seperate work and plot onto gpu and cpu respectively!
+# TODO(@mhguo): separate work and plot onto gpu and cpu respectively!
 
 def adwork(ad,zlist=None,dlevel=1,bins=256):
     acc.add_tools(ad)

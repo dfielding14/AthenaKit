@@ -29,7 +29,7 @@ sys.path.append('/home/mg9443/Git')
 import athenakit.athenakit as ak
 plt.style.use('~/Git/pykit/pykit/mplstyle/mg')
 
-# TODO(@mhguo): seperate work and plot onto gpu and cpu respectively!
+# TODO(@mhguo): separate work and plot onto gpu and cpu respectively!
 
 def adwork(ad,zlist=None,dlevel=1,bins=256):
     ad.rmin = ad.mb_dx.min()
