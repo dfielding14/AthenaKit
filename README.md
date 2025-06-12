@@ -15,3 +15,15 @@ Current features are:
 ## Getting started
 
 Documentation is under construction on the [wiki](https://github.com/mh-guo/AthenaKit/wiki) pages.
+
+## Basic Usage
+
+The `examples` directory contains short scripts demonstrating common tasks.
+To convert binary dumps to ATHDF format and read a history file:
+
+```bash
+python examples/basic_usage.py /path/to/run
+```
+
+This will create `.athdf` files next to the binaries and print the time
+column from the corresponding history file.

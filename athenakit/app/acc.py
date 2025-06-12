@@ -1,3 +1,6 @@
+"""
+Accretion flow initial condition solver and utilities.
+"""
 import numpy as np
 try:
     import cupy as xp
@@ -37,6 +40,12 @@ n_t_i_ratio=n_t_h_ratio/n_i_h_ratio
 ##############################################################
 
 class InitialCondition:
+    """Solve a spherically symmetric accretion profile.
+
+    The class provides routines to integrate a density profile for a
+    black hole surrounded by stellar and dark matter components using a
+    Runge--Kutta solver.
+    """
     def __init__(self,m_bh,m_star,r_star,m_dm,r_dm,r_entropy,k_entropy,xi_entropy,x_0,dens_0,
                  gamma=5.0/3.0,unit=grunit) -> None:
         self.m_bh=m_bh
@@ -55,8 +64,10 @@ class InitialCondition:
         pass
     # profile solver
     def NFWMass(self,r,ms,rs):
+        """Enclosed mass of an NFW profile."""
         return ms*(np.log(1+r/rs)-r/(rs+r))
     def NFWDens(self,r,ms,rs):
+        """Density of an NFW profile."""
         return ms/(4*np.pi*rs**2*r*(1+r/rs)**2)
     def StellarMass(self,r):
         return self.NFWMass(r,self.m_star,self.r_star)
@@ -90,6 +101,7 @@ class InitialCondition:
         y+=1/6*(k1+2*k2+2*k3+k4)*h
         return y
     def solve(self,x0=None,dens0=None,N1=2048,N2=1024,logh=0.002):
+        """Integrate the accretion profile and return derived quantities."""
         if x0 is None:
             x0 = self.x_0
         if dens0 is None:
@@ -151,6 +163,7 @@ class InitialCondition:
         return self.rs[key]
 
 def add_tools(ad):
+    """Attach commonly used physical quantities to an ``AthenaBinary`` object."""
     ad.rin = ad.header('problem','r_in',float)
     ad.rmin = ad.mb_dx.min()
     ad.rmax = float(np.min(np.abs([ad.x1min,ad.x1max,ad.x2min,ad.x2max,ad.x3min,ad.x3max])))
